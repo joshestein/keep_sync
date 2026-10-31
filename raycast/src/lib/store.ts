@@ -9,9 +9,7 @@ import { join } from "node:path";
 export const APP_DIR = join(homedir(), "Library", "Application Support", "keep-sync");
 
 export type Op =
-  | { op: "create"; note_id: string; title: string; text: string }
-  | { op: "update"; note_id: string; title: string; text: string }
-  | { op: "delete"; note_id: string };
+  { op: "create" | "update"; note_id: string; title: string; text: string } | { op: "delete"; note_id: string };
 
 export interface CachedNote {
   id: string;
