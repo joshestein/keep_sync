@@ -61,17 +61,11 @@ export function noteUrl(id: string): string {
 
 /** Write one op file: temp file, fsync, then rename, so the service never reads a partial op (ADR 0002). */
 export function writeOp(op: Op, appDir = APP_DIR): void {
-  const dir = queueDir(appDir);
+  const dir = join(appDir, "queue");
   mkdirSync(dir, { recursive: true });
   const name = `${Date.now()}-${randomBytes(4).toString("hex")}.json`;
   const tmp = join(dir, `.${name}.tmp`);
-  const fd = openSync(tmp, "w", 0o600);
-  try {
-    writeSync(fd, JSON.stringify(op));
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  writeFileSync(tmp, JSON.stringify(op), { mode: 0o600, flush: true });
   renameSync(tmp, join(dir, name));
 }
 
