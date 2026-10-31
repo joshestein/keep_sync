@@ -17,7 +17,7 @@ from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 
 from keep_sync.apply import apply_queue
-from keep_sync.cache import Status, SyncError, serialize_notes, write_cache
+from keep_sync.cache import Status, SyncError, read_cached_notes, serialize_notes, write_cache
 from keep_sync.keychain import KeychainError
 from keep_sync.queue import remove_ops
 from keep_sync.state import save_state
@@ -89,7 +89,10 @@ class Syncer:
             self.synced_at = attempt_at
             save_state(self.keep, self.state_file)
 
-        write_cache(self.cache_file, serialize_notes(self.keep), Status(self.synced_at, attempt_at, error))
+        # Until a full sync fills the model, it is empty or partial (resync clears it first).
+        # Keep the notes from the last cache, so a failed sync never empties the list.
+        notes = read_cached_notes(self.cache_file) if self.needs_full_sync else serialize_notes(self.keep)
+        write_cache(self.cache_file, notes, Status(self.synced_at, attempt_at, error))
         if error is None:
             remove_ops(applied)
         return error
