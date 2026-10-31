@@ -28,6 +28,7 @@ describe("escapeMarkdown", () => {
 
   it("keeps line breaks and stops indented lines from becoming code", () => {
     expect(escapeMarkdown("a\n    b")).toBe("a  \n    b");
+     expect(escapeMarkdown("a\n\t b")).toBe("a  \n     b");
   });
 });
 
