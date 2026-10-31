@@ -11,6 +11,8 @@ OpKind = Literal["create", "update", "delete"]
 
 # gkeepapi's client-side id format: "{ms:x}.{random64:016x}" (ADR 0001)
 NOTE_ID_RE = re.compile(r"[0-9a-f]+\.[0-9a-f]{16}")
+# Op file names: "<Date.now()>-<hex>.json". Must match OP_FILE in raycast/src/lib/store.ts.
+OP_FILE_RE = re.compile(r"\d+-[0-9a-f]+\.json")
 
 
 class InvalidOp(ValueError):
@@ -26,8 +28,8 @@ class Op:
 
 
 def list_op_files(queue_dir: Path) -> list[Path]:
-    """Op files in apply order. Names start with a ms timestamp. Temp files start with '.'."""
-    return sorted(p for p in queue_dir.glob("*.json") if not p.name.startswith("."))
+    """Op files in apply order: "<ms>-<hex>.json", the same pattern the extension reads. Skips temp files."""
+    return sorted(p for p in queue_dir.glob("*.json") if OP_FILE_RE.fullmatch(p.name))
 
 
 def parse_op(path: Path) -> Op:
