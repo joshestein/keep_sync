@@ -1,0 +1,20 @@
+[project]
+name = "keep-sync"
+version = "0.1.0"
+description = "Background sync between Google Keep and local files for the Raycast extension"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "gkeepapi==0.17.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
