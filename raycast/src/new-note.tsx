@@ -1,7 +1,6 @@
 import { popToRoot, showHUD } from "@raycast/api";
 
-import { mintNoteId } from "./lib/id";
-import { writeOp } from "./lib/store";
+import { mintNoteId, writeOp } from "./lib/store";
 import { NoteForm } from "./note-form";
 
 export default function Command() {

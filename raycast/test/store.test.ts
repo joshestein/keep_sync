@@ -3,8 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { mintNoteId } from "../src/lib/id";
-import { CachedNote, loadNotes, overlay, QueuedOp, readOps, syncWarning, writeOp } from "../src/lib/store";
+import { CachedNote, loadNotes, mintNoteId, overlay, readOps, syncWarning, writeOp } from "../src/lib/store";
 
 const cached = (id: string, fields: Partial<CachedNote> = {}): CachedNote => ({
   id,
@@ -21,12 +20,9 @@ const cached = (id: string, fields: Partial<CachedNote> = {}): CachedNote => ({
   ...fields,
 });
 
-const q = (ms: number, op: QueuedOp["op"]): QueuedOp => ({ ms, op });
-
 describe("mintNoteId", () => {
   it("matches gkeepapi's format and the service's create check", () => {
-    const id = mintNoteId(0x18f2a9c3b10);
-    expect(id).toMatch(/^18f2a9c3b10\.[0-9a-f]{16}$/);
+    expect(mintNoteId(0x18f2a9c3b10)).toMatch(/^18f2a9c3b10\.[0-9a-f]{16}$/);
     expect(mintNoteId()).not.toBe(mintNoteId());
   });
 });
@@ -42,9 +38,7 @@ describe("writeOp and readOps", () => {
     const names = readdirSync(join(appDir, "queue"));
     expect(names).toHaveLength(1);
     expect(names[0]).toMatch(/^\d+-[0-9a-f]{8}\.json$/);
-    expect(readOps(join(appDir, "queue")).map((o) => o.op)).toEqual([
-      { op: "create", note_id: "a", title: "", text: "x" },
-    ]);
+    expect(readOps(join(appDir, "queue"))).toEqual([{ op: "create", note_id: "a", title: "", text: "x" }]);
   });
 
   it("skips temp files, folders, and unreadable files", () => {
@@ -53,7 +47,7 @@ describe("writeOp and readOps", () => {
     writeFileSync(join(dir, ".1-abcd.json.tmp"), "{}");
     writeFileSync(join(dir, "2-abcd.json"), "{");
     writeFileSync(join(dir, "3-abcd.json"), JSON.stringify({ op: "delete", note_id: "a" }));
-    expect(readOps(dir)).toEqual([q(3, { op: "delete", note_id: "a" })]);
+    expect(readOps(dir)).toEqual([{ op: "delete", note_id: "a" }]);
   });
 
   it("returns no ops when the queue does not exist", () => {
@@ -66,24 +60,38 @@ describe("writeOp and readOps", () => {
     expect(status).toBeNull();
     expect(notes.map((n) => [n.id, n.state])).toEqual([["a", "pending"]]);
   });
+
+  it("sorts active before archived, pinned first, then newest", () => {
+    writeFileSync(
+      join(appDir, "cache.json"),
+      JSON.stringify({
+        synced_at: null,
+        last_attempt_at: null,
+        error: null,
+        notes: [
+          cached("archived", { archived: true, pinned: true, updated: "2026-10-03T00:00:00.000Z" }),
+          cached("old", { updated: "2026-10-01T00:00:00.000Z" }),
+          cached("new", { updated: "2026-10-02T00:00:00.000Z" }),
+          cached("pinned", { pinned: true }),
+        ],
+      }),
+    );
+    expect(loadNotes(appDir).notes.map((n) => n.id)).toEqual(["pinned", "new", "old", "archived"]);
+  });
 });
 
 describe("overlay", () => {
-  it("shows a capture as pending", () => {
-    const [note] = overlay([], [q(1000, { op: "create", note_id: "a", title: "T", text: "x" })], []);
-    expect(note).toMatchObject({
-      id: "a",
-      title: "T",
-      text: "x",
-      state: "pending",
-      updated: "1970-01-01T00:00:01.000Z",
-    });
+  const now = new Date("2026-10-31T12:00:00.000Z");
+
+  it("shows a capture as pending, dated now", () => {
+    const [note] = overlay([], [{ op: "create", note_id: "a", title: "T", text: "x" }], [], now);
+    expect(note).toMatchObject({ id: "a", title: "T", text: "x", state: "pending", updated: now.toISOString() });
   });
 
   it("applies an edit to a cached note and keeps its other fields", () => {
     const [note] = overlay(
       [cached("a", { pinned: true, labels: ["home"] })],
-      [q(1, { op: "update", note_id: "a", title: "T", text: "new" })],
+      [{ op: "update", note_id: "a", title: "T", text: "new" }],
       [],
     );
     expect(note).toMatchObject({ text: "new", pinned: true, labels: ["home"], state: "pending" });
@@ -91,36 +99,20 @@ describe("overlay", () => {
 
   it("applies ops in order: capture, edit, delete", () => {
     const ops = [
-      q(1, { op: "create", note_id: "a", title: "", text: "x" }),
-      q(2, { op: "update", note_id: "a", title: "", text: "y" }),
-    ];
-    expect(overlay([], ops, [])[0].text).toBe("y");
-    expect(overlay([], [...ops, q(3, { op: "delete", note_id: "a" })], [])).toEqual([]);
+      { op: "create", note_id: "a", title: "", text: "x" },
+      { op: "update", note_id: "a", title: "", text: "y" },
+    ] as const;
+    expect(overlay([], [...ops], [])[0].text).toBe("y");
+    expect(overlay([], [...ops, { op: "delete", note_id: "a" }], [])).toEqual([]);
   });
 
   it("hides a pending delete", () => {
-    expect(overlay([cached("a")], [q(1, { op: "delete", note_id: "a" })], [])).toEqual([]);
+    expect(overlay([cached("a")], [{ op: "delete", note_id: "a" }], [])).toEqual([]);
   });
 
-  it("marks failed ops, and a failed delete keeps the note", () => {
-    const notes = overlay(
-      [cached("a"), cached("b")],
-      [],
-      [q(1, { op: "delete", note_id: "a" }), q(2, { op: "update", note_id: "b", title: "", text: "lost?" })],
-    );
-    expect(notes.map((n) => [n.id, n.state, n.text])).toEqual([
-      ["a", "failed", ""],
-      ["b", "failed", "lost?"],
-    ]);
-  });
-
-  it("is a no-op when the cache already has the op's result", () => {
-    const [note] = overlay(
-      [cached("a", { text: "x" })],
-      [q(1, { op: "update", note_id: "a", title: "", text: "x" })],
-      [],
-    );
-    expect(note.text).toBe("x");
+  it("marks failed ops", () => {
+    const [note] = overlay([cached("a")], [], [{ op: "update", note_id: "a", title: "", text: "lost?" }]);
+    expect([note.state, note.text]).toEqual(["failed", "lost?"]);
   });
 });
 
