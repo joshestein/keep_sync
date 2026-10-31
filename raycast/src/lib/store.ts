@@ -41,13 +41,9 @@ export interface Note extends CachedNote {
   state: "synced" | "pending" | "failed";
 }
 
-const OP_FILE = /^(\d+)-[0-9a-f]+\.json$/;
-
-const queueDir = (appDir: string) => join(appDir, "queue");
-const failedDir = (appDir: string) => join(queueDir(appDir), "failed");
-
-export function noteUrl(id: string): string {
-  return `https://keep.google.com/u/0/#NOTE/${id}`;
+/** A Keep note id in gkeepapi's client-side format: "{ms:x}.{random64:016x}" (ADR 0001). */
+export function mintNoteId(now = Date.now()): string {
+  return `${now.toString(16)}.${randomBytes(8).toString("hex")}`;
 }
 
 /** Write one op file: temp file, fsync, then rename, so the service never reads a partial op (ADR 0002). */
