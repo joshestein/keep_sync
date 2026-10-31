@@ -14,10 +14,9 @@ import {
 } from "@raycast/api";
 import { useMemo, useState } from "react";
 
-import { mintNoteId } from "./lib/id";
 import { escapeMarkdown, renderNote } from "./lib/markdown";
 import { displayTitle, filterNotes } from "./lib/search";
-import { loadNotes, Note, SyncStatus, syncWarning, writeOp } from "./lib/store";
+import { loadNotes, mintNoteId, Note, syncWarning, writeOp } from "./lib/store";
 import { NoteForm } from "./note-form";
 
 export default function Command() {
@@ -34,7 +33,11 @@ export default function Command() {
           <List.Item
             icon={{ source: Icon.Warning, tintColor: Color.Orange }}
             title={warning}
-            detail={<List.Item.Detail markdown={statusMarkdown(warning, status)} />}
+            detail={
+              <List.Item.Detail
+                markdown={`${escapeMarkdown(warning)}\n\nRun \`keep-sync status\` or check \`~/Library/Logs/keep-sync.log\`.`}
+              />
+            }
             actions={
               <ActionPanel>
                 <ReloadAction reload={reload} />
@@ -185,14 +188,4 @@ function rowIcon(note: Note): Image.ImageLike {
   if (note.archived) return { source: Icon.Box, tintColor: Color.SecondaryText };
   if (note.pinned) return Icon.Pin;
   return note.kind === "list" ? Icon.BulletPoints : Icon.Document;
-}
-
-function statusMarkdown(warning: string, status: SyncStatus | null): string {
-  const lines = [`## ${escapeMarkdown(warning)}`];
-  if (status) {
-    lines.push(`Last sync: ${status.synced_at ? new Date(status.synced_at).toLocaleString() : "never"}`);
-    lines.push(`Last attempt: ${status.last_attempt_at ? new Date(status.last_attempt_at).toLocaleString() : "never"}`);
-  }
-  lines.push("Check `keep-sync status` and `~/Library/Logs/keep-sync.log`.");
-  return lines.join("\n\n");
 }
