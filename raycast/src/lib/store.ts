@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
-import { APP_DIR } from "./paths";
+export const APP_DIR = join(homedir(), "Library", "Application Support", "keep-sync");
 
 export type Op =
   | { op: "create"; note_id: string; title: string; text: string }
