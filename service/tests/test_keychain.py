@@ -26,6 +26,14 @@ def test_round_trip() -> None:
     assert read_credentials() == ("me@example.com", "aas_et/new")
 
 
+def test_new_email_replaces_the_old_item() -> None:
+    save_credentials("old@example.com", "aas_et/old")
+    save_credentials("new@example.com", "aas_et/new")
+    assert read_credentials() == ("new@example.com", "aas_et/new")
+    assert delete_credentials()
+    assert not delete_credentials()
+
+
 def test_missing() -> None:
     with pytest.raises(KeychainError, match="keep-sync setup"):
         read_credentials()
