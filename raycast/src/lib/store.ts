@@ -33,7 +33,6 @@ export interface SyncStatus {
 }
 
 interface Cache extends SyncStatus {
-  version: 1;
   notes: CachedNote[];
 }
 
