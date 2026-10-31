@@ -12,17 +12,24 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { escapeMarkdown, renderNote } from "./lib/markdown";
 import { displayTitle, filterNotes } from "./lib/search";
 import { loadNotes, mintNoteId, Note, syncWarning, writeOp } from "./lib/store";
 import { NoteForm } from "./note-form";
 
+const RELOAD_MS = 3000;
+
 export default function Command() {
   const [{ notes, status }, setData] = useState(() => loadNotes());
   const [query, setQuery] = useState("");
   const reload = () => setData(loadNotes());
+  // The service changes the files in the background: poll so pending states and the sync warning stay current.
+  useEffect(() => {
+    const timer = setInterval(() => setData(loadNotes()), RELOAD_MS);
+    return () => clearInterval(timer);
+  }, []);
   const shown = useMemo(() => filterNotes(notes, query), [notes, query]);
   const warning = syncWarning(status);
 
