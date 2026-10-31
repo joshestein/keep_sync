@@ -56,6 +56,10 @@ export function writeOp(op: Op, appDir = APP_DIR): void {
   renameSync(tmp, join(dir, name));
 }
 
+export function createNote(title: string, text: string, appDir = APP_DIR): void {
+  writeOp({ op: "create", note_id: mintNoteId(), title, text }, appDir);
+}
+
 /** Ops in a queue directory, in apply order. Unreadable files are skipped: the service moves them to failed/. */
 export function readOps(dir: string): Op[] {
   let names: string[];
