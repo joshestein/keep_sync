@@ -37,15 +37,8 @@ interface Cache extends SyncStatus {
 }
 
 /** "synced": as in the cache. "pending": ops still in the queue. "failed": an op in queue/failed. */
-export type NoteState = "synced" | "pending" | "failed";
-
 export interface Note extends CachedNote {
-  state: NoteState;
-}
-
-export interface QueuedOp {
-  ms: number;
-  op: Op;
+  state: "synced" | "pending" | "failed";
 }
 
 const OP_FILE = /^(\d+)-[0-9a-f]+\.json$/;
