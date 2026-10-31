@@ -90,7 +90,7 @@ function NoteItem({ note, query, reload }: { note: Note; query: string; reload: 
               title="Edit Note"
               icon={Icon.Pencil}
               shortcut={Keyboard.Shortcut.Common.Edit}
-              target={<EditNote note={note} onSaved={reload} />}
+              target={<NoteEditor note={note} onSaved={reload} />}
             />
           )}
           <Action.CopyToClipboard title="Copy Text" content={note.text} />
@@ -131,13 +131,19 @@ function NewNoteAction({ query, reload }: { query: string; reload: () => void })
   );
 }
 
-function CreateNote({ onSaved }: { onSaved: () => void }) {
+/** Edits `note`, or makes a new note when there is none. */
+function NoteEditor({ note, initialText = "", onSaved }: { note?: Note; initialText?: string; onSaved: () => void }) {
   const { pop } = useNavigation();
   return (
     <NoteForm
-      submitTitle="Save Note"
+      submitTitle={note ? "Save Changes" : "Save Note"}
+      initial={{ title: note?.title ?? "", text: note?.text ?? initialText }}
       onSubmit={async ({ title, text }) => {
-        writeOp({ op: "create", note_id: mintNoteId(), title, text });
+        if (!note) {
+          writeOp({ op: "create", note_id: mintNoteId(), title, text });
+        } else if (title !== note.title || text !== note.text) {
+          writeOp({ op: "update", note_id: note.id, title, text });
+        }
         onSaved();
         pop();
         await showToast({ style: Toast.Style.Success, title: "Saved", message: "Syncs in the background" });
