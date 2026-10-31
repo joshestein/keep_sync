@@ -17,21 +17,27 @@ from .conftest import NOTE_ID, WriteOp
 
 
 class FakeServer:
-    """Stands in for Keep.sync. Records each call and raises the queued errors in order."""
+    """Stands in for Keep.sync. Records each call and raises the queued errors in order.
 
-    def __init__(self) -> None:
+    Like the real sync, a resync clears the model before it talks to the server.
+    """
+
+    def __init__(self, keep: Keep) -> None:
+        self.keep = keep
         self.calls: list[bool] = []
         self.errors: list[Exception | None] = []
 
     def sync(self, resync: bool = False) -> None:
         self.calls.append(resync)
+        if resync:
+            self.keep.restore({"keep_version": None, "labels": [], "nodes": []})
         if self.errors and (error := self.errors.pop(0)) is not None:
             raise error
 
 
 @pytest.fixture
 def server(keep: Keep, monkeypatch: pytest.MonkeyPatch) -> FakeServer:
-    fake = FakeServer()
+    fake = FakeServer(keep)
     monkeypatch.setattr(keep, "sync", fake.sync)
     return fake
 
@@ -140,6 +146,35 @@ def test_resync_required_does_a_full_sync_next_round(
 
     assert server.calls == [False, True, False]
     assert keep.get(NOTE_ID) is not None
+
+
+def test_failed_resync_keeps_the_cached_notes(
+    make_syncer, server: FakeServer, queue_dir: Path, write_op: WriteOp
+) -> None:
+    """Keep asks for a resync, then the network fails: the list must not go empty."""
+    syncer = make_syncer()
+    write_op("create", text="milk")
+    syncer.round()
+    server.errors = [ResyncRequiredException("Full resync required"), requests.ConnectionError("offline")]
+
+    syncer.round()
+    syncer.round()
+
+    assert server.calls == [False, False, True]
+    cache = read_cache(syncer)
+    assert cache["error"]["kind"] == "network"
+    assert [n["id"] for n in cache["notes"]] == [NOTE_ID]
+
+
+def test_no_state_offline_keeps_the_cached_notes(make_syncer, server: FakeServer) -> None:
+    """state.json is lost but cache.json is good: an offline start must not empty the list."""
+    syncer = make_syncer(needs_full_sync=True)
+    syncer.cache_file.write_text(json.dumps({"notes": [{"id": NOTE_ID}]}))
+    server.errors = [requests.ConnectionError("offline")]
+
+    syncer.round()
+
+    assert read_cache(syncer)["notes"] == [{"id": NOTE_ID}]
 
 
 def test_auth_error_logs_in_again(make_syncer, server: FakeServer, logins: list[Keep]) -> None:
