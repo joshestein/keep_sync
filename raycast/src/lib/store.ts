@@ -46,6 +46,15 @@ export function mintNoteId(now = Date.now()): string {
   return `${now.toString(16)}.${randomBytes(8).toString("hex")}`;
 }
 
+/** Op file names: "<Date.now()>-<hex>.json". Must match OP_FILE_RE in service/src/keep_sync/queue.py. */
+export const OP_FILE = /^(\d+)-[0-9a-f]+\.json$/;
+
+/** An op and the time it was written, from its file name. */
+export interface QueuedOp {
+  at: number;
+  op: Op;
+}
+
 /** Write one op file: temp file, fsync, then rename, so the service never reads a partial op (ADR 0002). */
 export function writeOp(op: Op, appDir = APP_DIR): void {
   const dir = join(appDir, "queue");
@@ -61,7 +70,7 @@ export function createNote(title: string, text: string, appDir = APP_DIR): void 
 }
 
 /** Ops in a queue directory, in apply order. Unreadable files are skipped: the service moves them to failed/. */
-export function readOps(dir: string): Op[] {
+export function readOps(dir: string): QueuedOp[] {
   let names: string[];
   try {
     names = readdirSync(dir).sort();
@@ -69,24 +78,38 @@ export function readOps(dir: string): Op[] {
     return [];
   }
   return names.flatMap((name) => {
-    if (!/^\d+-[0-9a-f]+\.json$/.test(name)) return [];
+    const match = OP_FILE.exec(name);
+    if (!match) return [];
     try {
-      return [JSON.parse(readFileSync(join(dir, name), "utf8")) as Op];
+      return [{ at: Number(match[1]), op: JSON.parse(readFileSync(join(dir, name), "utf8")) as Op }];
     } catch {
       return [];
     }
   });
 }
 
-/** The cache with failed, then queued, ops applied on top, so captures and edits show at once. */
-export function overlay(notes: CachedNote[], queued: Op[], failed: Op[], now = new Date()): Note[] {
+/**
+ * The cache with failed, then queued, ops applied on top, so captures and edits show at once.
+ * A failed op shows only while Keep has no newer version of the note: the service never removes failed/,
+ * so an old failed op must not hide or override later changes.
+ */
+export function overlay(notes: CachedNote[], queued: QueuedOp[], failed: QueuedOp[]): Note[] {
   const byId = new Map<string, Note>(notes.map((n) => [n.id, { ...n, state: "synced" }]));
-  const apply = (op: Op, state: Note["state"]) => {
+  const apply = ({ at, op }: QueuedOp, state: Note["state"]) => {
+    const current = byId.get(op.note_id);
+    if (state === "failed") {
+      if (current && Date.parse(current.updated) > at) return;
+      // A failed delete did not remove the note, so mark it. A failed update to a note now gone shows nothing.
+      if (op.op === "delete" || (op.op === "update" && !current)) {
+        if (current) byId.set(op.note_id, { ...current, state });
+        return;
+      }
+    }
     if (op.op === "delete") {
       byId.delete(op.note_id);
       return;
     }
-    const base = byId.get(op.note_id) ?? {
+    const base = current ?? {
       id: op.note_id,
       kind: "note",
       items: null,
@@ -96,8 +119,8 @@ export function overlay(notes: CachedNote[], queued: Op[], failed: Op[], now = n
       labels: [],
       url: `https://keep.google.com/u/0/#NOTE/${op.note_id}`,
     };
-    // `updated` is now, so a capture or edit sorts to the top.
-    byId.set(op.note_id, { ...base, title: op.title, text: op.text, updated: now.toISOString(), state });
+    // `updated` is the op time, so a capture or edit sorts to the top and the order is stable across reloads.
+    byId.set(op.note_id, { ...base, title: op.title, text: op.text, updated: new Date(at).toISOString(), state });
   };
   failed.forEach((op) => apply(op, "failed"));
   queued.forEach((op) => apply(op, "pending"));
