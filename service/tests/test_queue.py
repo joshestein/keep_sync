@@ -7,11 +7,12 @@ from keep_sync.queue import InvalidOp, Op, list_op_files, move_to_failed, parse_
 from .conftest import NOTE_ID, WriteOp
 
 
-def test_lists_in_name_order_and_skips_temp_files(queue_dir: Path, write_op: WriteOp) -> None:
+def test_lists_in_name_order_and_skips_other_files(queue_dir: Path, write_op: WriteOp) -> None:
     first = write_op("create", title="", text="a")
     second = write_op("delete")
     (queue_dir / ".1700000000005-ffff0000.json.tmp").write_text("{}")
     (queue_dir / ".hidden.json").write_text("{}")
+    (queue_dir / "notes.json").write_text("{}")
     (queue_dir / "failed").mkdir()
     assert list_op_files(queue_dir) == [first, second]
 
