@@ -19,10 +19,13 @@ def _security(*args: str, stdin: str | None = None) -> subprocess.CompletedProce
 
 
 def save_credentials(email: str, token: str) -> None:
-    """Store or replace the item. The token goes through stdin (`security -i`), never argv, so `ps` cannot see it."""
+    """Store the item and remove any old one. The token goes through stdin (`security -i`), never argv, so `ps` cannot see it."""
     for value in (email, token):
         if any(c in value for c in '"\\\n'):
             raise KeychainError("email and token must not contain quotes, backslashes, or newlines")
+    # `add -U` matches on service and account, so a new email would add a second item,
+    # and read_credentials (by service only) could return the old one.
+    delete_credentials()
     command = f'add-generic-password -U -s {SERVICE} -a "{email}" -w "{token}" -T {SECURITY}\n'
     result = _security("-i", stdin=command)
     if result.returncode != 0 or result.stderr.strip():
