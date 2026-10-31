@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Form, showToast, Toast } from "@raycast/api";
+import { Action, ActionPanel, Form } from "@raycast/api";
 import { useState } from "react";
 
 export interface NoteFormValues {
@@ -21,11 +21,7 @@ export function NoteForm({ submitTitle, initial, enableDrafts, onSubmit }: Props
       setTextError("Write a title or a note");
       return;
     }
-    try {
-      await onSubmit({ title: title.trim(), text });
-    } catch (error) {
-      await showToast({ style: Toast.Style.Failure, title: "Could not queue the note", message: String(error) });
-    }
+    await onSubmit({ title: title.trim(), text });
   }
 
   return (
