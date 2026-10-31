@@ -43,6 +43,15 @@ export default function Command() {
           />
         </List.Section>
       )}
+      <List.EmptyView
+        title="No notes"
+        description={query ? "Press Return to make a note from your search." : undefined}
+        actions={
+          <ActionPanel>
+            <NewNoteAction query={query} reload={reload} />
+          </ActionPanel>
+        }
+      />
       <List.Section title="Notes" subtitle={String(shown.length)}>
         {shown.map((note) => (
           <NoteItem key={note.id} note={note} reload={reload} />
