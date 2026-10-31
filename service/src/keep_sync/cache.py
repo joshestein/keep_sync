@@ -1,5 +1,6 @@
 """cache.json: every note the Mac shows, plus sync status. Written only by the service."""
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +55,15 @@ def note_to_dict(node: TopLevelNode) -> dict[str, Any]:
 
 def serialize_notes(keep: Keep) -> list[dict[str, Any]]:
     return [note_to_dict(n) for n in keep.all() if not n.trashed and not n.deleted]
+
+
+def read_cached_notes(path: Path) -> list[dict[str, Any]]:
+    """The notes in the current cache.json, or [] if there is no usable file."""
+    try:
+        notes = json.loads(path.read_text(encoding="utf-8"))["notes"]
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+    return notes if isinstance(notes, list) else []
 
 
 def write_cache(path: Path, notes: list[dict[str, Any]], status: Status) -> None:
