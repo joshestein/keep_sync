@@ -57,7 +57,7 @@ export function writeOp(op: Op, appDir = APP_DIR): void {
 }
 
 /** Ops in a queue directory, in apply order. Unreadable files are skipped: the service moves them to failed/. */
-export function readOps(dir: string): QueuedOp[] {
+export function readOps(dir: string): Op[] {
   let names: string[];
   try {
     names = readdirSync(dir).sort();
@@ -65,67 +65,42 @@ export function readOps(dir: string): QueuedOp[] {
     return [];
   }
   return names.flatMap((name) => {
-    const match = OP_FILE.exec(name);
-    if (!match) return [];
+    if (!/^\d+-[0-9a-f]+\.json$/.test(name)) return [];
     try {
-      return [{ ms: Number(match[1]), op: JSON.parse(readFileSync(join(dir, name), "utf8")) as Op }];
+      return [JSON.parse(readFileSync(join(dir, name), "utf8")) as Op];
     } catch {
       return [];
     }
   });
 }
 
-/** The cache with queued and failed ops applied on top, so captures and edits show at once. */
-export function overlay(notes: CachedNote[], queued: QueuedOp[], failed: QueuedOp[]): Note[] {
+/** The cache with failed, then queued, ops applied on top, so captures and edits show at once. */
+export function overlay(notes: CachedNote[], queued: Op[], failed: Op[], now = new Date()): Note[] {
   const byId = new Map<string, Note>(notes.map((n) => [n.id, { ...n, state: "synced" }]));
-  const apply = ({ ms, op }: QueuedOp, state: NoteState) => {
-    const base = byId.get(op.note_id);
+  const apply = (op: Op, state: Note["state"]) => {
     if (op.op === "delete") {
-      // A failed delete leaves the note in Keep, so keep showing it.
-      if (state === "failed" && base) byId.set(op.note_id, { ...base, state });
-      else byId.delete(op.note_id);
+      byId.delete(op.note_id);
       return;
     }
-    byId.set(op.note_id, {
-      ...(base ?? newNote(op.note_id)),
-      title: op.title,
-      text: op.text,
-      updated: new Date(ms).toISOString(),
-      state,
-    });
+    const base = byId.get(op.note_id) ?? {
+      id: op.note_id,
+      kind: "note",
+      items: null,
+      pinned: false,
+      archived: false,
+      color: "DEFAULT",
+      labels: [],
+      url: `https://keep.google.com/u/0/#NOTE/${op.note_id}`,
+    };
+    // `updated` is now, so a capture or edit sorts to the top.
+    byId.set(op.note_id, { ...base, title: op.title, text: op.text, updated: now.toISOString(), state });
   };
-  failed.forEach((q) => apply(q, "failed"));
-  queued.forEach((q) => apply(q, "pending"));
+  failed.forEach((op) => apply(op, "failed"));
+  queued.forEach((op) => apply(op, "pending"));
   return [...byId.values()];
 }
 
-function newNote(id: string): Note {
-  return {
-    id,
-    kind: "note",
-    title: "",
-    text: "",
-    items: null,
-    pinned: false,
-    archived: false,
-    color: "DEFAULT",
-    labels: [],
-    updated: "",
-    url: noteUrl(id),
-    state: "pending",
-  };
-}
-
-/** Active before archived, pinned first, then newest first. */
-export function sortNotes(notes: Note[]): Note[] {
-  return [...notes].sort(
-    (a, b) =>
-      Number(a.archived) - Number(b.archived) ||
-      Number(b.pinned) - Number(a.pinned) ||
-      b.updated.localeCompare(a.updated),
-  );
-}
-
+/** Notes sorted active first, then pinned first, then newest first. */
 export function loadNotes(appDir = APP_DIR): { notes: Note[]; status: SyncStatus | null } {
   let cache: Cache | null = null;
   try {
@@ -133,19 +108,23 @@ export function loadNotes(appDir = APP_DIR): { notes: Note[]; status: SyncStatus
   } catch {
     // No cache yet: the service has not synced. Queued ops still show.
   }
-  const notes = overlay(cache?.notes ?? [], readOps(queueDir(appDir)), readOps(failedDir(appDir)));
-  return { notes: sortNotes(notes), status: cache };
+  const queue = join(appDir, "queue");
+  const notes = overlay(cache?.notes ?? [], readOps(queue), readOps(join(queue, "failed"))).sort(
+    (a, b) =>
+      Number(a.archived) - Number(b.archived) ||
+      Number(b.pinned) - Number(a.pinned) ||
+      b.updated.localeCompare(a.updated),
+  );
+  return { notes, status: cache };
 }
 
 const STALE_MS = 10 * 60 * 1000;
 
 /** A warning for the list, or null when sync is healthy. */
 export function syncWarning(status: SyncStatus | null, now = Date.now()): string | null {
-  if (status === null) return "No sync yet. Is the keep-sync service installed?";
-  if (status.error?.kind === "auth") return "Keep sync failing (auth). Run `keep-sync setup`.";
-  if (status.error) return `Keep sync failing (${status.error.kind}): ${status.error.message}`;
-  if (status.synced_at === null) return "No sync yet.";
+  if (status?.error?.kind === "auth") return "Keep sync failing (auth). Run `keep-sync setup`.";
+  if (status?.error) return `Keep sync failing (${status.error.kind}): ${status.error.message}`;
+  if (!status?.synced_at) return "No sync yet. Is the keep-sync service running?";
   const age = now - Date.parse(status.synced_at);
-  if (age > STALE_MS) return `Last sync ${Math.round(age / 60_000)} min ago.`;
-  return null;
+  return age > STALE_MS ? `Last sync ${Math.round(age / 60_000)} min ago.` : null;
 }
