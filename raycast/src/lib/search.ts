@@ -9,3 +9,15 @@ export function filterNotes(notes: Note[], query: string): Note[] {
     return words.every((w) => haystack.includes(w));
   });
 }
+
+/** The list row title: the note title, else its first non-empty line. */
+export function displayTitle(note: Note): string {
+  return (
+    note.title.trim() ||
+    note.text
+      .split("\n")
+      .find((line) => line.trim())
+      ?.trim() ||
+    "Untitled"
+  );
+}
