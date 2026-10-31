@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { escapeMarkdown, renderNote } from "./lib/markdown";
 import { displayTitle, filterNotes } from "./lib/search";
-import { loadNotes, mintNoteId, Note, syncWarning, writeOp } from "./lib/store";
+import { createNote, loadNotes, Note, syncWarning, writeOp } from "./lib/store";
 import { NoteForm } from "./note-form";
 
 const RELOAD_MS = 3000;
@@ -147,8 +147,9 @@ function NoteEditor({ note, initialText = "", onSaved }: { note?: Note; initialT
       initial={{ title: note?.title ?? "", text: note?.text ?? initialText }}
       onSubmit={async ({ title, text }) => {
         if (!note) {
-          writeOp({ op: "create", note_id: mintNoteId(), title, text });
-        } else if (title !== note.title || text !== note.text) {
+          createNote(title, text);
+          // NoteForm trims the title, so compare with the trimmed title or every save writes an op.
+        } else if (title !== note.title.trim() || text !== note.text) {
           writeOp({ op: "update", note_id: note.id, title, text });
         }
         onSaved();
