@@ -41,6 +41,7 @@ export default function Command() {
             actions={
               <ActionPanel>
                 <ReloadAction reload={reload} />
+                <NewNoteAction query={query} reload={reload} />
               </ActionPanel>
             }
           />
@@ -57,14 +58,14 @@ export default function Command() {
       />
       <List.Section title="Notes" subtitle={String(shown.length)}>
         {shown.map((note) => (
-          <NoteItem key={note.id} note={note} reload={reload} />
+          <NoteItem key={note.id} note={note} query={query} reload={reload} />
         ))}
       </List.Section>
     </List>
   );
 }
 
-function NoteItem({ note, reload }: { note: Note; reload: () => void }) {
+function NoteItem({ note, query, reload }: { note: Note; query: string; reload: () => void }) {
   async function trash() {
     const confirmed = await confirmAlert({
       title: "Move note to trash?",
@@ -97,12 +98,7 @@ function NoteItem({ note, reload }: { note: Note; reload: () => void }) {
             <Action.CopyToClipboard title="Copy Title" content={note.title} shortcut={Keyboard.Shortcut.Common.Copy} />
           )}
           <Action.OpenInBrowser title="Open in Keep" url={note.url} shortcut={Keyboard.Shortcut.Common.Open} />
-          <Action.Push
-            title="New Note"
-            icon={Icon.Plus}
-            shortcut={Keyboard.Shortcut.Common.New}
-            target={<CreateNote onSaved={reload} />}
-          />
+          <NewNoteAction query={query} reload={reload} />
           <Action
             title="Move to Trash"
             icon={Icon.Trash}
@@ -123,20 +119,14 @@ function ReloadAction({ reload }: { reload: () => void }) {
   );
 }
 
-function EditNote({ note, onSaved }: { note: Note; onSaved: () => void }) {
-  const { pop } = useNavigation();
+/** The search text becomes the body of the new note. */
+function NewNoteAction({ query, reload }: { query: string; reload: () => void }) {
   return (
-    <NoteForm
-      submitTitle="Save Changes"
-      initial={{ title: note.title, text: note.text }}
-      onSubmit={async ({ title, text }) => {
-        if (title !== note.title || text !== note.text) {
-          writeOp({ op: "update", note_id: note.id, title, text });
-          onSaved();
-        }
-        pop();
-        await showToast({ style: Toast.Style.Success, title: "Saved", message: "Syncs in the background" });
-      }}
+    <Action.Push
+      title="New Note"
+      icon={Icon.Plus}
+      shortcut={Keyboard.Shortcut.Common.New}
+      target={<NoteEditor initialText={query} onSaved={reload} />}
     />
   );
 }
