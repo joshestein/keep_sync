@@ -5,7 +5,13 @@ description = "Background sync between Google Keep and local files for the Rayca
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "gkeepapi==0.17.1",
+    "gpsoauth>=2",
+    "requests>=2.32",
+    "watchdog>=6",
 ]
+
+[project.scripts]
+keep-sync = "keep_sync.cli:main"
 
 [dependency-groups]
 dev = [
