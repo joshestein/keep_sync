@@ -3,7 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { CachedNote, loadNotes, mintNoteId, overlay, readOps, syncWarning, writeOp } from "../src/lib/store";
+import {
+  CachedNote,
+  loadNotes,
+  mintNoteId,
+  Op,
+  overlay,
+  QueuedOp,
+  readOps,
+  syncWarning,
+  writeOp,
+} from "../src/lib/store";
 
 const cached = (id: string, fields: Partial<CachedNote> = {}): CachedNote => ({
   id,
@@ -19,6 +29,9 @@ const cached = (id: string, fields: Partial<CachedNote> = {}): CachedNote => ({
   url: `https://keep.google.com/u/0/#NOTE/${id}`,
   ...fields,
 });
+
+const AT = Date.parse("2026-10-31T12:00:00.000Z");
+const queued = (op: Op, at = AT): QueuedOp => ({ at, op });
 
 describe("mintNoteId", () => {
   it("matches gkeepapi's format and the service's create check", () => {
@@ -38,7 +51,9 @@ describe("writeOp and readOps", () => {
     const names = readdirSync(join(appDir, "queue"));
     expect(names).toHaveLength(1);
     expect(names[0]).toMatch(/^\d+-[0-9a-f]{8}\.json$/);
-    expect(readOps(join(appDir, "queue"))).toEqual([{ op: "create", note_id: "a", title: "", text: "x" }]);
+    const [{ at, op }] = readOps(join(appDir, "queue"));
+    expect(op).toEqual({ op: "create", note_id: "a", title: "", text: "x" });
+    expect(Math.abs(at - Date.now())).toBeLessThan(5000);
   });
 
   it("skips temp files, folders, and unreadable files", () => {
@@ -47,7 +62,7 @@ describe("writeOp and readOps", () => {
     writeFileSync(join(dir, ".1-abcd.json.tmp"), "{}");
     writeFileSync(join(dir, "2-abcd.json"), "{");
     writeFileSync(join(dir, "3-abcd.json"), JSON.stringify({ op: "delete", note_id: "a" }));
-    expect(readOps(dir)).toEqual([{ op: "delete", note_id: "a" }]);
+    expect(readOps(dir)).toEqual([{ at: 3, op: { op: "delete", note_id: "a" } }]);
   });
 
   it("returns no ops when the queue does not exist", () => {
@@ -81,17 +96,21 @@ describe("writeOp and readOps", () => {
 });
 
 describe("overlay", () => {
-  const now = new Date("2026-10-31T12:00:00.000Z");
-
-  it("shows a capture as pending, dated now", () => {
-    const [note] = overlay([], [{ op: "create", note_id: "a", title: "T", text: "x" }], [], now);
-    expect(note).toMatchObject({ id: "a", title: "T", text: "x", state: "pending", updated: now.toISOString() });
+  it("shows a capture as pending, dated with the op time", () => {
+    const [note] = overlay([], [queued({ op: "create", note_id: "a", title: "T", text: "x" })], []);
+    expect(note).toMatchObject({
+      id: "a",
+      title: "T",
+      text: "x",
+      state: "pending",
+      updated: new Date(AT).toISOString(),
+    });
   });
 
   it("applies an edit to a cached note and keeps its other fields", () => {
     const [note] = overlay(
       [cached("a", { pinned: true, labels: ["home"] })],
-      [{ op: "update", note_id: "a", title: "T", text: "new" }],
+      [queued({ op: "update", note_id: "a", title: "T", text: "new" })],
       [],
     );
     expect(note).toMatchObject({ text: "new", pinned: true, labels: ["home"], state: "pending" });
@@ -99,20 +118,53 @@ describe("overlay", () => {
 
   it("applies ops in order: capture, edit, delete", () => {
     const ops = [
-      { op: "create", note_id: "a", title: "", text: "x" },
-      { op: "update", note_id: "a", title: "", text: "y" },
-    ] as const;
-    expect(overlay([], [...ops], [])[0].text).toBe("y");
-    expect(overlay([], [...ops, { op: "delete", note_id: "a" }], [])).toEqual([]);
+      queued({ op: "create", note_id: "a", title: "", text: "x" }),
+      queued({ op: "update", note_id: "a", title: "", text: "y" }),
+    ];
+    expect(overlay([], ops, [])[0].text).toBe("y");
+    expect(overlay([], [...ops, queued({ op: "delete", note_id: "a" })], [])).toEqual([]);
   });
 
   it("hides a pending delete", () => {
-    expect(overlay([cached("a")], [{ op: "delete", note_id: "a" }], [])).toEqual([]);
+    expect(overlay([cached("a")], [queued({ op: "delete", note_id: "a" })], [])).toEqual([]);
   });
 
   it("marks failed ops", () => {
-    const [note] = overlay([cached("a")], [], [{ op: "update", note_id: "a", title: "", text: "lost?" }]);
+    const [note] = overlay([cached("a")], [], [queued({ op: "update", note_id: "a", title: "", text: "lost?" })]);
     expect([note.state, note.text]).toEqual(["failed", "lost?"]);
+  });
+
+  it("ignores a failed op when Keep has a newer version of the note", () => {
+    const newer = cached("a", { text: "phone", updated: new Date(AT + 1000).toISOString() });
+    const failed = [
+      queued({ op: "update", note_id: "a", title: "", text: "old" }),
+      queued({ op: "delete", note_id: "a" }),
+    ];
+    expect(overlay([newer], [], failed)).toMatchObject([{ text: "phone", state: "synced" }]);
+  });
+
+  it("keeps a note with a failed delete and marks it", () => {
+    const [note] = overlay([cached("a", { text: "kept" })], [], [queued({ op: "delete", note_id: "a" })]);
+    expect([note.state, note.text]).toEqual(["failed", "kept"]);
+  });
+
+  it("ignores a failed update to a note that is gone, but shows a failed create", () => {
+    expect(overlay([], [], [queued({ op: "update", note_id: "a", title: "", text: "x" })])).toEqual([]);
+    expect(overlay([], [], [queued({ op: "create", note_id: "a", title: "", text: "x" })])).toMatchObject([
+      { state: "failed" },
+    ]);
+  });
+
+  it("orders pending captures by op time", () => {
+    const notes = overlay(
+      [],
+      [
+        queued({ op: "create", note_id: "a", title: "", text: "" }, AT),
+        queued({ op: "create", note_id: "b", title: "", text: "" }, AT + 1),
+      ],
+      [],
+    );
+    expect(notes.map((n) => n.updated)).toEqual([new Date(AT).toISOString(), new Date(AT + 1).toISOString()]);
   });
 });
 
