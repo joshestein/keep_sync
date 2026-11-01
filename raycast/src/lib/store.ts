@@ -85,7 +85,19 @@ export function createNote(title: string, text: string, appDir = APP_DIR): void 
   writeOp({ op: "create", note_id: mintNoteId(), title, text }, appDir);
 }
 
-/** Ops in a queue directory, in apply order. Unreadable files are skipped: the service moves them to failed/. */
+/** Enough of the Op shape for overlay() not to throw. The service rejects invalid ops fully (parse_op). */
+function isOp(value: unknown): value is Op {
+  if (typeof value !== "object" || value === null) return false;
+  const { op, note_id, title, text } = value as Record<string, unknown>;
+  if (typeof note_id !== "string") return false;
+  if (op === "delete") return true;
+  return (op === "create" || op === "update") && typeof title === "string" && typeof text === "string";
+}
+
+/**
+ * Ops in a queue directory, in apply order. Unreadable or malformed files are skipped: the service moves them
+ * to failed/, and a single bad file must not break the whole list.
+ */
 export function readOps(dir: string): QueuedOp[] {
   let names: string[];
   try {
@@ -97,7 +109,8 @@ export function readOps(dir: string): QueuedOp[] {
     const match = OP_FILE.exec(name);
     if (!match) return [];
     try {
-      return [{ at: Number(match[1]), op: JSON.parse(readFileSync(join(dir, name), "utf8")) as Op }];
+      const op: unknown = JSON.parse(readFileSync(join(dir, name), "utf8"));
+      return isOp(op) ? [{ at: Number(match[1]), op }] : [];
     } catch {
       return [];
     }
