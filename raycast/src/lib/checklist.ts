@@ -18,19 +18,25 @@ const TODO = /^([ \t]*)-[ \t]*\[([ xX]?)\][ \t]?(.*)$/;
  */
 export function parseChecklist(text: string): ListItem[] {
   const items: ListItem[] = [];
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
+  for (const line of lines(text)) {
     const match = TODO.exec(line);
-    const item = match
-      ? { text: match[3], checked: match[2] === "x" || match[2] === "X", indented: match[1] !== "" }
-      : { text: line.replace(/^[ \t]+/, ""), checked: false, indented: /^[ \t]/.test(line) };
-    items.push({ ...item, indented: item.indented && items.length > 0 });
+    const indented = match ? match[1] !== "" : /^[ \t]/.test(line);
+    items.push({
+      text: match ? match[3] : line.replace(/^[ \t]+/, ""),
+      checked: match ? match[2] === "x" || match[2] === "X" : false,
+      indented: indented && items.length > 0,
+    });
   }
   return items;
 }
 
+/** The non-empty lines. CRLF and CR count as line breaks, and only spaces and tabs count as blank. */
+function lines(text: string): string[] {
+  return text.split(/\r\n|\r|\n/).filter((line) => /[^ \t]/.test(line));
+}
+
 /** True if every non-empty line has a checkbox, and there is at least one. A capture then makes a list. */
 export function isChecklist(text: string): boolean {
-  const lines = text.split("\n").filter((line) => line.trim());
-  return lines.length > 0 && lines.every((line) => TODO.test(line));
+  const nonempty = lines(text);
+  return nonempty.length > 0 && nonempty.every((line) => TODO.test(line));
 }
