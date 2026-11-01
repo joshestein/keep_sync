@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,7 +19,7 @@ from watchdog.observers.api import BaseObserver
 from keep_sync.apply import apply_queue
 from keep_sync.cache import Status, SyncError, read_cached_notes, serialize_notes, write_cache
 from keep_sync.keychain import KeychainError
-from keep_sync.queue import remove_ops
+from keep_sync.queue import SYNC_NOW_FILE, remove_ops
 from keep_sync.state import save_state
 
 log = logging.getLogger(__name__)
