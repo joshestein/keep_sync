@@ -243,12 +243,17 @@ def test_backoff() -> None:
         ("modified", "sync-now", "", True, True),
         ("deleted", "sync-now", "", False, False),
         ("modified", "1-a.json", "", False, False),
+        # FSEvents merges flags: a "modified" after run_forever unlinked the file is not a request.
+        ("modified", "sync-now-gone", "", False, False),
     ],
 )
 def test_queue_handler_wakes_only_on_new_ops_and_sync_now(
     queue_dir: Path, event_type: str, src: str, dest: str, op: bool, sync_now: bool
 ) -> None:
     wake = Wake()
+    if src == "sync-now" and event_type != "deleted":
+        (queue_dir / src).touch()
+    src = src.removesuffix("-gone")
     event = SimpleNamespace(
         event_type=event_type, src_path=str(queue_dir / src), dest_path=str(queue_dir / dest) if dest else ""
     )
