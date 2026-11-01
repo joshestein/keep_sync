@@ -126,7 +126,7 @@ class _QueueHandler(FileSystemEventHandler):
             self.wake.op.set()
 
 
-def watch_queue(queue_dir: Path, wake: threading.Event) -> BaseObserver:
+def watch_queue(queue_dir: Path, wake: Wake) -> BaseObserver:
     observer = Observer()
     observer.schedule(_QueueHandler(queue_dir, wake), str(queue_dir), recursive=False)
     observer.start()
