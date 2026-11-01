@@ -8,7 +8,7 @@ import requests
 from gkeepapi import Keep
 from gkeepapi.exception import APIException, LoginException, ResyncRequiredException
 
-from keep_sync.cache import SyncError
+from keep_sync.cache import CACHE_VERSION, SyncError
 from keep_sync.keychain import KeychainError
 from keep_sync.queue import list_op_files
 from keep_sync.service import (
@@ -178,7 +178,7 @@ def test_failed_resync_keeps_the_cached_notes(
 def test_no_state_offline_keeps_the_cached_notes(make_syncer, server: FakeServer) -> None:
     """state.json is lost but cache.json is good: an offline start must not empty the list."""
     syncer = make_syncer(needs_full_sync=True)
-    syncer.cache_file.write_text(json.dumps({"notes": [{"id": NOTE_ID}]}))
+    syncer.cache_file.write_text(json.dumps({"version": CACHE_VERSION, "notes": [{"id": NOTE_ID}]}))
     server.errors = [requests.ConnectionError("offline")]
 
     syncer.round()
