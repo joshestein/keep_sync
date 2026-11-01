@@ -15,7 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { escapeMarkdown, renderNote } from "./lib/markdown";
-import { displayTitle, filterNotes } from "./lib/search";
+import { displayTitle, filterNotes, plainText } from "./lib/search";
 import { createNote, loadNotes, Note, requestSync, syncWarning, writeOp } from "./lib/store";
 import { NoteForm } from "./note-form";
 
@@ -110,7 +110,7 @@ function NoteItem({ note, query, reload }: { note: Note; query: string; reload: 
             shortcut={Keyboard.Shortcut.Common.Edit}
             target={<NoteEditor note={note} onSaved={reload} />}
           />
-          <Action.CopyToClipboard title="Copy Text" content={note.text} />
+          <Action.CopyToClipboard title="Copy Text" content={plainText(note)} />
           {note.title && (
             <Action.CopyToClipboard title="Copy Title" content={note.title} shortcut={Keyboard.Shortcut.Common.Copy} />
           )}

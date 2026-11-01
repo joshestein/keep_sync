@@ -2,7 +2,7 @@ import { parseChecklist } from "./checklist";
 import type { Note } from "./store";
 
 /** The text without checkboxes, so "x" does not match every checked item. */
-function plainText(note: Note): string {
+export function plainText(note: Note): string {
   return note.kind === "list"
     ? parseChecklist(note.text)
         .map((i) => i.text)
