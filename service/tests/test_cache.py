@@ -21,7 +21,6 @@ def test_serializes_notes_and_lists_and_skips_trashed(keep: Keep) -> None:
     assert set(notes) == {"T", "L"}
     assert notes["T"]["kind"] == "note"
     assert notes["T"]["text"] == "body"
-    assert notes["T"]["items"] is None
     assert notes["T"]["pinned"] is True
     assert notes["T"]["archived"] is False
     assert notes["T"]["color"] == "DEFAULT"
@@ -29,8 +28,7 @@ def test_serializes_notes_and_lists_and_skips_trashed(keep: Keep) -> None:
     assert notes["T"]["url"].endswith(note.id)
     assert notes["T"]["updated"].endswith("Z")
     assert notes["L"]["kind"] == "list"
-    assert notes["L"]["text"] == "a\nb"
-    assert notes["L"]["items"] == [{"text": "a", "checked": False}, {"text": "b", "checked": True}]
+    assert notes["L"]["text"] == "- [ ] a\n- [x] b"
 
 
 def test_includes_archived(keep: Keep) -> None:

@@ -1,10 +1,12 @@
 from pathlib import Path
 
+import pytest
 from gkeepapi import Keep
-from gkeepapi.node import TopLevelNode
+from gkeepapi.node import List, Note, TopLevelNode
 
+from keep_sync import apply
 from keep_sync.apply import SORT_STEP, apply_queue, create_note, fallback_id
-from keep_sync.queue import list_op_files
+from keep_sync.queue import Op, list_op_files
 
 from .conftest import NOTE_ID, OTHER_ID, WriteOp
 
@@ -102,11 +104,40 @@ def test_update_after_fallback_note_trashed_makes_next_fallback(
     assert note.text == "second"
 
 
-def test_update_list_fails(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
-    lst = keep.createList("L", [("a", False)])
-    path = write_op("update", note_id=lst.id, title="L", text="a")
-    assert apply_queue(keep, queue_dir) == []
-    assert (queue_dir / "failed" / path.name).exists()
+def test_create_all_todo_lines_makes_a_list(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    write_op("create", title="Shop", text="- [ ] milk\n  - [x] oat\n- [ ] eggs")
+    apply_queue(keep, queue_dir)
+    lst = keep.get(NOTE_ID)
+    assert isinstance(lst, List)
+    assert lst.title == "Shop"
+    assert [(i.text, i.checked, i.indented) for i in lst.items] == [
+        ("milk", False, False),
+        ("oat", True, True),
+        ("eggs", False, False),
+    ]
+
+
+def test_create_with_a_plain_line_makes_a_note(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    write_op("create", text="- [ ] milk\nthoughts")
+    apply_queue(keep, queue_dir)
+    assert isinstance(keep.get(NOTE_ID), Note)
+
+
+def test_update_list_replaces_items(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    lst = keep.createList("L", [("a", False), ("b", False)])
+    write_op("update", note_id=lst.id, title="L2", text="- [x] a\n- [ ] b\nc")
+    apply_queue(keep, queue_dir)
+    assert lst.title == "L2"
+    assert [(i.text, i.checked) for i in lst.items] == [("a", True), ("b", False), ("c", False)]
+
+
+def test_update_note_with_todo_text_stays_a_note(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    create_note(keep, "", "x", OTHER_ID)
+    write_op("update", note_id=OTHER_ID, title="", text="- [ ] a")
+    apply_queue(keep, queue_dir)
+    note = keep.get(OTHER_ID)
+    assert isinstance(note, Note)
+    assert note.text == "- [ ] a"
 
 
 def test_delete_trashes(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
@@ -179,10 +210,20 @@ def test_failed_op_newer_than_applied_op_stays(keep: Keep, queue_dir: Path, writ
     assert apply_queue(keep, queue_dir) == [delete]
 
 
-def test_later_op_removes_op_that_failed_in_same_run(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
-    lst = keep.createList("L", [("a", False)])
-    bad = write_op("update", note_id=lst.id, title="L", text="a")
-    delete = write_op("delete", note_id=lst.id)
+def test_later_op_removes_op_that_failed_in_same_run(
+    keep: Keep, queue_dir: Path, write_op: WriteOp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_note(keep, "", "x", OTHER_ID)
+    bad = write_op("update", note_id=OTHER_ID, title="", text="boom")
+    delete = write_op("delete", note_id=OTHER_ID)
+    real_apply = apply.apply_op
+
+    def apply_op(keep: Keep, op: Op) -> None:
+        if op.text == "boom":
+            raise RuntimeError("unexpected")
+        real_apply(keep, op)
+
+    monkeypatch.setattr(apply, "apply_op", apply_op)
 
     assert apply_queue(keep, queue_dir) == [delete, queue_dir / "failed" / bad.name]
 
