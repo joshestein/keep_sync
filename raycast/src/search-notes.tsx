@@ -103,15 +103,13 @@ function NoteItem({ note, query, reload }: { note: Note; query: string; reload: 
       detail={<List.Item.Detail markdown={renderNote(note)} metadata={<NoteMetadata note={note} />} />}
       actions={
         <ActionPanel>
-          {/* The first action runs on Return, the second on Cmd+Return. Lists cannot be edited, so Copy comes first. */}
-          {note.kind === "note" && (
-            <Action.Push
-              title="Edit Note"
-              icon={Icon.Pencil}
-              shortcut={Keyboard.Shortcut.Common.Edit}
-              target={<NoteEditor note={note} onSaved={reload} />}
-            />
-          )}
+          {/* The first action runs on Return, the second on Cmd+Return. */}
+          <Action.Push
+            title="Edit Note"
+            icon={Icon.Pencil}
+            shortcut={Keyboard.Shortcut.Common.Edit}
+            target={<NoteEditor note={note} onSaved={reload} />}
+          />
           <Action.CopyToClipboard title="Copy Text" content={note.text} />
           {note.title && (
             <Action.CopyToClipboard title="Copy Title" content={note.title} shortcut={Keyboard.Shortcut.Common.Copy} />
