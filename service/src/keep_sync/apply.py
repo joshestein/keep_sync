@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from collections import defaultdict
 from pathlib import Path
 
 from gkeepapi import Keep
@@ -64,18 +65,50 @@ def apply_op(keep: Keep, op: Op) -> None:
                 node.trash()
 
 
+def _failed_by_note(queue_dir: Path) -> dict[str, list[Path]]:
+    """Failed op files by note id, oldest first. Unreadable failed ops have no note id and are left out."""
+    failed_dir = queue_dir / "failed"
+    by_note: dict[str, list[Path]] = defaultdict(list)
+    if failed_dir.is_dir():
+        for path in list_op_files(failed_dir):
+            try:
+                by_note[parse_op(path).note_id].append(path)
+            except InvalidOp:
+                continue
+    return by_note
+
+
+def _pop_older(paths: list[Path], than: Path) -> list[Path]:
+    """Remove and return the paths whose names sort before than."""
+    older = [p for p in paths if p.name < than.name]
+    paths[:] = [p for p in paths if p.name >= than.name]
+    return older
+
+
 def apply_queue(keep: Keep, queue_dir: Path) -> list[Path]:
-    """Apply all queued ops in order. Return the applied files; move failed ones to failed/."""
-    applied = []
+    """Apply all queued ops in order and move failed ones to failed/.
+
+    Return the files to remove after sync: the applied ops and the older failed ops for the same note.
+    A later op that applies replaces them. Without this, a failed op stays in the overlay for good:
+    for example, a trashed failed create comes back.
+    """
+    failed = _failed_by_note(queue_dir)
+    done = []
     for path in list_op_files(queue_dir):
+        op = None
         try:
-            apply_op(keep, parse_op(path))
+            op = parse_op(path)
+            apply_op(keep, op)
         except Exception:
             log.exception("failed op %s", path.name)
             try:
                 move_to_failed(path)
             except OSError:
                 log.exception("could not move %s to failed/", path.name)
+            else:
+                if op is not None:
+                    failed[op.note_id].append(path.parent / "failed" / path.name)
         else:
-            applied.append(path)
-    return applied
+            done.append(path)
+            done.extend(_pop_older(failed[op.note_id], path))
+    return done
