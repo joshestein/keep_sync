@@ -22,7 +22,6 @@ const cached = (id: string, fields: Partial<CachedNote> = {}): CachedNote => ({
   kind: "note",
   title: "",
   text: "",
-  items: null,
   pinned: false,
   archived: false,
   color: "DEFAULT",
@@ -107,6 +106,25 @@ describe("overlay", () => {
       state: "pending",
       updated: new Date(AT).toISOString(),
     });
+  });
+
+  it("shows a capture of todo lines as a list", () => {
+    const [note] = overlay([], [queued({ op: "create", note_id: "a", title: "", text: "-[] milk\n  - [x] oat" })], []);
+    expect(note).toMatchObject({ kind: "list", text: "-[] milk\n  - [x] oat" });
+  });
+
+  it("never changes the kind on an edit", () => {
+    const list = cached("L", { kind: "list", text: "- [ ] a" });
+    const [edited, note] = overlay(
+      [list, cached("N", { text: "x" })],
+      [
+        queued({ op: "update", note_id: "L", title: "", text: "- [x] a\nb" }),
+        queued({ op: "update", note_id: "N", title: "", text: "- [ ] a" }),
+      ],
+      [],
+    );
+    expect(edited).toMatchObject({ kind: "list", text: "- [x] a\nb" });
+    expect(note).toMatchObject({ kind: "note", text: "- [ ] a" });
   });
 
   it("applies an edit to a cached note and keeps its other fields", () => {

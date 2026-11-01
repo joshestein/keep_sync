@@ -9,7 +9,6 @@ const note = (fields: Partial<Note>): Note => ({
   kind: "note",
   title: "",
   text: "",
-  items: null,
   pinned: false,
   archived: false,
   color: "DEFAULT",
@@ -42,14 +41,18 @@ describe("renderNote", () => {
   });
 
   it("renders a checklist", () => {
-    const list = note({
-      kind: "list",
-      items: [
-        { text: "milk", checked: false },
-        { text: "[eggs]", checked: true },
-      ],
-    });
-    expect(renderNote(list)).toBe("- [ ] milk\n- [x] \\[eggs\\]");
+    const list = note({ kind: "list", text: "- [ ] milk\n\toat\n-[x] [eggs]" });
+    expect(renderNote(list)).toBe("- [ ] milk\n  - [ ] oat\n- [x] \\[eggs\\]");
+  });
+});
+
+describe("list search and title", () => {
+  const list = note({ kind: "list", text: "- [x] milk\n- [ ] eggs" });
+
+  it("ignores the checkboxes", () => {
+    expect(filterNotes([list], "x")).toEqual([]);
+    expect(filterNotes([list], "eggs")).toEqual([list]);
+    expect(displayTitle(list)).toBe("milk");
   });
 });
 
