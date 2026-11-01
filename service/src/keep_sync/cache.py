@@ -9,6 +9,7 @@ from typing import Any, Literal
 from gkeepapi import Keep
 from gkeepapi.node import List, TopLevelNode
 
+from keep_sync import checklist
 from keep_sync.atomic import write_json_atomic
 
 CACHE_VERSION = 1
@@ -42,8 +43,8 @@ def note_to_dict(node: TopLevelNode) -> dict[str, Any]:
         "id": node.id,
         "kind": "list" if is_list else "note",
         "title": node.title,
-        "text": "\n".join(i.text for i in node.items) if is_list else node.text,
-        "items": [{"text": i.text, "checked": i.checked} for i in node.items] if is_list else None,
+        # A list's text is the form the Mac edits: "- [ ] a" per item (see checklist.py).
+        "text": checklist.format_items(node.items) if is_list else node.text,
         "pinned": node.pinned,
         "archived": node.archived,
         "color": node.color.value,
