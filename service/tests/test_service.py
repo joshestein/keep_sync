@@ -1,5 +1,5 @@
 import json
-import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +11,16 @@ from gkeepapi.exception import APIException, LoginException, ResyncRequiredExcep
 from keep_sync.cache import SyncError
 from keep_sync.keychain import KeychainError
 from keep_sync.queue import list_op_files
-from keep_sync.service import MAX_BACKOFF_SECONDS, POLL_SECONDS, Syncer, _QueueHandler, backoff_seconds, classify
+from keep_sync.service import (
+    MAX_BACKOFF_SECONDS,
+    POLL_SECONDS,
+    Syncer,
+    Wake,
+    _QueueHandler,
+    backoff_seconds,
+    classify,
+    wait_for_next_round,
+)
 
 from .conftest import NOTE_ID, WriteOp
 
@@ -223,21 +232,42 @@ def test_backoff() -> None:
 
 
 @pytest.mark.parametrize(
-    ("event_type", "src", "dest", "wakes"),
+    ("event_type", "src", "dest", "op", "sync_now"),
     [
-        ("moved", ".1-a.json.tmp", "1-a.json", True),
-        ("created", "1-a.json", "", True),
-        ("created", ".1-a.json.tmp", "", False),
-        ("deleted", "1-a.json", "", False),
-        ("moved", "1-a.json", "failed/1-a.json", False),
+        ("moved", ".1-a.json.tmp", "1-a.json", True, False),
+        ("created", "1-a.json", "", True, False),
+        ("created", ".1-a.json.tmp", "", False, False),
+        ("deleted", "1-a.json", "", False, False),
+        ("moved", "1-a.json", "failed/1-a.json", False, False),
+        ("created", "sync-now", "", True, True),
+        ("modified", "sync-now", "", True, True),
+        ("deleted", "sync-now", "", False, False),
+        ("modified", "1-a.json", "", False, False),
     ],
 )
-def test_queue_handler_wakes_only_on_new_ops(
-    queue_dir: Path, event_type: str, src: str, dest: str, wakes: bool
+def test_queue_handler_wakes_only_on_new_ops_and_sync_now(
+    queue_dir: Path, event_type: str, src: str, dest: str, op: bool, sync_now: bool
 ) -> None:
-    wake = threading.Event()
+    wake = Wake()
     event = SimpleNamespace(
         event_type=event_type, src_path=str(queue_dir / src), dest_path=str(queue_dir / dest) if dest else ""
     )
     _QueueHandler(queue_dir, wake).on_any_event(event)  # pyright: ignore[reportArgumentType]
-    assert wake.is_set() == wakes
+    assert (wake.op.is_set(), wake.sync_now.is_set()) == (op, sync_now)
+
+
+def test_sync_now_cuts_backoff_short() -> None:
+    wake = Wake()
+    wake.op.set()
+    wake.sync_now.set()
+    start = time.monotonic()
+    wait_for_next_round(wake, delay=30, failed=True)
+    assert time.monotonic() - start < 1
+
+
+def test_new_op_does_not_cut_backoff_short() -> None:
+    wake = Wake()
+    wake.op.set()
+    start = time.monotonic()
+    wait_for_next_round(wake, delay=0.2, failed=True)
+    assert time.monotonic() - start >= 0.2
