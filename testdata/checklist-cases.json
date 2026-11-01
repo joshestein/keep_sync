@@ -20,5 +20,10 @@
    "items": [{"text": "milk", "checked": false, "indented": false}, {"text": "eggs", "checked": false, "indented": false}]},
   {"name": "markdown bullet without box is not a todo", "text": "- milk", "is_checklist": false,
    "items": [{"text": "- milk", "checked": false, "indented": false}]},
-  {"name": "empty", "text": "  \n", "is_checklist": false, "items": []}
+  {"name": "empty", "text": "  \n", "is_checklist": false, "items": []},
+  {"name": "CRLF and CR are line breaks", "text": "- [ ] milk\r\n- [x] eggs\rbread\r\n", "is_checklist": false,
+   "items": [{"text": "milk", "checked": false, "indented": false}, {"text": "eggs", "checked": true, "indented": false},
+             {"text": "bread", "checked": false, "indented": false}]},
+  {"name": "only spaces and tabs indent", "text": "- [ ] a\n\u00a0b", "is_checklist": false,
+   "items": [{"text": "a", "checked": false, "indented": false}, {"text": "\u00a0b", "checked": false, "indented": false}]}
 ]
