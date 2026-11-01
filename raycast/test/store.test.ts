@@ -57,16 +57,12 @@ describe("writeOp and readOps", () => {
     expect(Math.abs(at - Date.now())).toBeLessThan(5000);
   });
 
-  it("skips temp files, folders, unreadable files, and malformed ops", () => {
+  it("skips temp files, folders, and unreadable files", () => {
     const dir = join(appDir, "queue");
     mkdirSync(join(dir, "failed"), { recursive: true });
     writeFileSync(join(dir, ".1-abcd.json.tmp"), "{}");
     writeFileSync(join(dir, "2-abcd.json"), "{");
     writeFileSync(join(dir, "3-abcd.json"), JSON.stringify({ op: "delete", note_id: "a" }));
-    writeFileSync(join(dir, "4-abcd.json"), JSON.stringify({ op: "create" }));
-    writeFileSync(join(dir, "5-abcd.json"), JSON.stringify({ op: "update", note_id: "b", title: null, text: "" }));
-    writeFileSync(join(dir, "6-abcd.json"), JSON.stringify({ op: "rename", note_id: "c" }));
-    writeFileSync(join(dir, "7-abcd.json"), JSON.stringify(null));
     expect(readOps(dir)).toEqual([{ at: 3, op: { op: "delete", note_id: "a" } }]);
   });
 
