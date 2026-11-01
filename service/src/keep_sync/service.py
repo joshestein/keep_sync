@@ -133,7 +133,15 @@ def watch_queue(queue_dir: Path, wake: Wake) -> BaseObserver:
     return observer
 
 
-def run_forever(syncer: Syncer, wake: threading.Event) -> None:
+def wait_for_next_round(wake: Wake, delay: float, failed: bool) -> None:
+    """After a failed round, only sync-now cuts the backoff short, so new ops do not hammer a failing server."""
+    if failed:
+        wake.sync_now.wait(delay)
+    elif wake.op.wait(delay) and not wake.sync_now.is_set():
+        time.sleep(DEBOUNCE_SECONDS)
+
+
+def run_forever(syncer: Syncer, wake: Wake) -> None:
     failures = 0
     while True:
         wake.op.clear()
@@ -149,9 +157,4 @@ def run_forever(syncer: Syncer, wake: threading.Event) -> None:
         faulthandler.cancel_dump_traceback_later()
 
         failures = 0 if error is None else failures + 1
-        delay = backoff_seconds(error, failures)
-        if error is not None:
-            # A new op does not cut a backoff short.
-            time.sleep(delay)
-        elif wake.wait(delay):
-            time.sleep(DEBOUNCE_SECONDS)
+        wait_for_next_round(wake, backoff_seconds(error, failures), failed=error is not None)
