@@ -77,10 +77,19 @@ describe("writeOp and readOps", () => {
     expect(notes.map((n) => [n.id, n.state])).toEqual([["a", "pending"]]);
   });
 
+  it("ignores a cache from another version", () => {
+    writeFileSync(
+      join(appDir, "cache.json"),
+      JSON.stringify({ version: 1, synced_at: null, last_attempt_at: null, error: null, notes: [cached("a")] }),
+    );
+    expect(loadNotes(appDir)).toEqual({ notes: [], status: null });
+  });
+
   it("sorts active before archived, pinned first, then newest", () => {
     writeFileSync(
       join(appDir, "cache.json"),
       JSON.stringify({
+        version: 2,
         synced_at: null,
         last_attempt_at: null,
         error: null,
