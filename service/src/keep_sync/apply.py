@@ -8,6 +8,7 @@ from pathlib import Path
 from gkeepapi import Keep
 from gkeepapi.node import List, Note, TopLevelNode
 
+from keep_sync import checklist
 from keep_sync.queue import InvalidOp, Op, list_op_files, move_to_failed, parse_op
 
 log = logging.getLogger(__name__)
@@ -21,15 +22,19 @@ def _is_gone(node: TopLevelNode | None) -> bool:
 SORT_STEP = 2**20
 
 
-def create_note(keep: Keep, title: str, text: str, note_id: str) -> Note:
+def create_note(keep: Keep, title: str, text: str, note_id: str) -> Note | List:
+    """A list if every line of text is a todo ("- [ ] a"), else a note."""
     # gkeepapi annotates **kwargs as dict, so the checker rejects a str id_.
-    note = Note(id_=note_id)  # pyright: ignore[reportArgumentType]
+    node = List(id_=note_id) if checklist.is_checklist(text) else Note(id_=note_id)  # pyright: ignore[reportArgumentType]
     # gkeepapi picks a random sortValue, which puts the note at a random place in Keep's custom order.
-    note.sort = max((n.sort for n in keep.all()), default=0) + SORT_STEP
-    note.title = title
-    note.text = text
-    keep.add(note)
-    return note
+    node.sort = max((n.sort for n in keep.all()), default=0) + SORT_STEP
+    node.title = title
+    if isinstance(node, List):
+        checklist.set_items(node, checklist.parse(text))
+    else:
+        node.text = text
+    keep.add(node)
+    return node
 
 
 def fallback_id(note_id: str) -> str:
@@ -59,12 +64,12 @@ def apply_op(keep: Keep, op: Op) -> None:
                     create_note(keep, op.title, op.text, note_id)
                     log.warning("update for missing or trashed note %s: created %s", op.note_id, note_id)
                     return
-            if isinstance(node, List):
-                raise InvalidOp("cannot update a list")
             # Skip unchanged fields so a replayed op does not touch the note.
             if node.title != op.title:
                 node.title = op.title
-            if node.text != op.text:
+            if isinstance(node, List):
+                checklist.set_items(node, checklist.parse(op.text))
+            elif node.text != op.text:
                 node.text = op.text
         case "delete":
             if not _is_gone(node):
