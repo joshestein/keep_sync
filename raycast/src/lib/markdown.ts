@@ -1,3 +1,4 @@
+import { parseChecklist } from "./checklist";
 import type { Note } from "./store";
 
 /**
@@ -17,8 +18,11 @@ export function escapeMarkdown(text: string): string {
 
 export function renderNote(note: Note): string {
   const title = note.title.trim() ? `# ${escapeMarkdown(note.title)}\n\n` : "";
-  const body = note.items
-    ? note.items.map((item) => `- [${item.checked ? "x" : " "}] ${escapeMarkdown(item.text)}`).join("\n")
-    : escapeMarkdown(note.text);
+  const body =
+    note.kind === "list"
+      ? parseChecklist(note.text)
+          .map((item) => `${item.indented ? "  " : ""}- [${item.checked ? "x" : " "}] ${escapeMarkdown(item.text)}`)
+          .join("\n")
+      : escapeMarkdown(note.text);
   return title + body;
 }
