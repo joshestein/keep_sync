@@ -32,3 +32,9 @@ The cookie works for a few minutes only, so run `setup` soon.
 cd service && uv run pytest
 cd raycast && npm test && npm run typecheck && npm run lint
 ```
+
+After you change the service, restart the agent to load the new code.
+
+```sh
+launchctl kickstart -k gui/$(id -u)/local.keep-sync
+```
