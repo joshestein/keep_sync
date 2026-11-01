@@ -90,8 +90,8 @@ export function readOps(dir: string): QueuedOp[] {
 
 /**
  * The cache with failed, then queued, ops applied on top, so captures and edits show at once.
- * A failed op shows only while Keep has no newer version of the note: the service never removes failed/,
- * so an old failed op must not hide or override later changes.
+ * A failed op shows only while Keep has no newer version of the note. The service removes a failed op only
+ * when a later op for the same note applies, so an old failed op must not hide or override other changes.
  */
 export function overlay(notes: CachedNote[], queued: QueuedOp[], failed: QueuedOp[]): Note[] {
   const byId = new Map<string, Note>(notes.map((n) => [n.id, { ...n, state: "synced" }]));
