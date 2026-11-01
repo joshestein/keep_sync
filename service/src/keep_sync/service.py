@@ -30,6 +30,9 @@ DEBOUNCE_SECONDS = 1
 # gkeepapi and gpsoauth set no HTTP timeouts, and gkeepapi retries 429s forever.
 # A round that runs this long is hung: exit and let launchd restart the service.
 ROUND_TIMEOUT_SECONDS = 5 * 60
+# A full sync of a big account is slow and state.json is written only after it completes,
+# so a short timeout here would restart the service before it ever saves state.
+FULL_SYNC_TIMEOUT_SECONDS = 30 * 60
 
 
 def classify(e: Exception) -> SyncError:
@@ -153,7 +156,8 @@ def run_forever(syncer: Syncer, wake: Wake) -> None:
         except OSError:
             log.exception("could not remove %s", SYNC_NOW_FILE)
         # On a hang, faulthandler writes all stacks to stderr (the launchd log) and exits.
-        faulthandler.dump_traceback_later(ROUND_TIMEOUT_SECONDS, exit=True)
+        timeout = FULL_SYNC_TIMEOUT_SECONDS if syncer.needs_full_sync else ROUND_TIMEOUT_SECONDS
+        faulthandler.dump_traceback_later(timeout, exit=True)
         error = syncer.round()
         faulthandler.cancel_dump_traceback_later()
 
