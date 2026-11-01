@@ -136,7 +136,13 @@ def watch_queue(queue_dir: Path, wake: Wake) -> BaseObserver:
 def run_forever(syncer: Syncer, wake: threading.Event) -> None:
     failures = 0
     while True:
-        wake.clear()
+        wake.op.clear()
+        wake.sync_now.clear()
+        # Remove the request before the round, so a request made during the round starts another one.
+        try:
+            (syncer.queue_dir / SYNC_NOW_FILE).unlink(missing_ok=True)
+        except OSError:
+            log.exception("could not remove %s", SYNC_NOW_FILE)
         # On a hang, faulthandler writes all stacks to stderr (the launchd log) and exits.
         faulthandler.dump_traceback_later(ROUND_TIMEOUT_SECONDS, exit=True)
         error = syncer.round()
