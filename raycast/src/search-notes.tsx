@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { escapeMarkdown, renderNote } from "./lib/markdown";
 import { displayTitle, filterNotes } from "./lib/search";
-import { createNote, loadNotes, Note, syncWarning, writeOp } from "./lib/store";
+import { createNote, loadNotes, Note, requestSync, syncWarning, writeOp } from "./lib/store";
 import { NoteForm } from "./note-form";
 
 const RELOAD_MS = 3000;
@@ -59,7 +59,7 @@ export default function Command() {
             }
             actions={
               <ActionPanel>
-                <ReloadAction reload={reload} />
+                <SyncNowAction reload={reload} />
                 <NewNoteAction query={query} reload={reload} />
               </ActionPanel>
             }
@@ -125,16 +125,32 @@ function NoteItem({ note, query, reload }: { note: Note; query: string; reload: 
             shortcut={Keyboard.Shortcut.Common.Remove}
             onAction={trash}
           />
-          <ReloadAction reload={reload} />
+          <SyncNowAction reload={reload} />
         </ActionPanel>
       }
     />
   );
 }
 
-function ReloadAction({ reload }: { reload: () => void }) {
+/** The list already polls the files, so this asks the service for a round. The poll shows the result. */
+function SyncNowAction({ reload }: { reload: () => void }) {
+  async function syncNow() {
+    try {
+      requestSync();
+    } catch (error) {
+      await showToast({ style: Toast.Style.Failure, title: "Could not request sync", message: String(error) });
+      return;
+    }
+    reload();
+    await showToast({ style: Toast.Style.Success, title: "Sync requested" });
+  }
   return (
-    <Action title="Reload" icon={Icon.ArrowClockwise} shortcut={Keyboard.Shortcut.Common.Refresh} onAction={reload} />
+    <Action
+      title="Sync Now"
+      icon={Icon.ArrowClockwise}
+      shortcut={Keyboard.Shortcut.Common.Refresh}
+      onAction={syncNow}
+    />
   );
 }
 
