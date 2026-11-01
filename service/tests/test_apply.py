@@ -156,3 +156,32 @@ def test_applied_files_stay_until_caller_removes_them(keep: Keep, queue_dir: Pat
     path = write_op("create", text="x")
     apply_queue(keep, queue_dir)
     assert path.exists()
+
+
+def test_later_op_removes_older_failed_op_for_same_note(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    """A failed create the user trashes or edits must not stay in failed/ and come back in the overlay."""
+    failed = write_op("create", text="x")
+    other = write_op("create", note_id=OTHER_ID, text="y")
+    (queue_dir / "failed").mkdir()
+    for path in (failed, other):
+        path.rename(queue_dir / "failed" / path.name)
+    delete = write_op("delete")
+
+    assert apply_queue(keep, queue_dir) == [delete, queue_dir / "failed" / failed.name]
+
+
+def test_failed_op_newer_than_applied_op_stays(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    delete = write_op("delete")
+    newer = write_op("create", text="x")
+    (queue_dir / "failed").mkdir()
+    newer.rename(queue_dir / "failed" / newer.name)
+
+    assert apply_queue(keep, queue_dir) == [delete]
+
+
+def test_later_op_removes_op_that_failed_in_same_run(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    lst = keep.createList("L", [("a", False)])
+    bad = write_op("update", note_id=lst.id, title="L", text="a")
+    delete = write_op("delete", note_id=lst.id)
+
+    assert apply_queue(keep, queue_dir) == [delete, queue_dir / "failed" / bad.name]
