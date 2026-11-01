@@ -1,11 +1,21 @@
+import { parseChecklist } from "./checklist";
 import type { Note } from "./store";
+
+/** The text without checkboxes, so "x" does not match every checked item. */
+function plainText(note: Note): string {
+  return note.kind === "list"
+    ? parseChecklist(note.text)
+        .map((i) => i.text)
+        .join("\n")
+    : note.text;
+}
 
 /** Notes whose title or text contains every word of the query, ignoring case. Keeps the input order. */
 export function filterNotes(notes: Note[], query: string): Note[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return notes;
   return notes.filter((n) => {
-    const haystack = `${n.title}\n${n.text}`.toLowerCase();
+    const haystack = `${n.title}\n${plainText(n)}`.toLowerCase();
     return words.every((w) => haystack.includes(w));
   });
 }
@@ -14,7 +24,7 @@ export function filterNotes(notes: Note[], query: string): Note[] {
 export function displayTitle(note: Note): string {
   return (
     note.title.trim() ||
-    note.text
+    plainText(note)
       .split("\n")
       .find((line) => line.trim())
       ?.trim() ||
