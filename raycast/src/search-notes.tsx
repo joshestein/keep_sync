@@ -59,7 +59,7 @@ export default function Command() {
             }
             actions={
               <ActionPanel>
-                <SyncNowAction reload={reload} />
+                <SyncNowAction />
                 <NewNoteAction query={query} reload={reload} />
               </ActionPanel>
             }
@@ -123,7 +123,7 @@ function NoteItem({ note, query, reload }: { note: Note; query: string; reload: 
             shortcut={Keyboard.Shortcut.Common.Remove}
             onAction={trash}
           />
-          <SyncNowAction reload={reload} />
+          <SyncNowAction />
         </ActionPanel>
       }
     />
@@ -131,7 +131,7 @@ function NoteItem({ note, query, reload }: { note: Note; query: string; reload: 
 }
 
 /** The list already polls the files, so this asks the service for a round. The poll shows the result. */
-function SyncNowAction({ reload }: { reload: () => void }) {
+function SyncNowAction() {
   async function syncNow() {
     try {
       requestSync();
@@ -139,7 +139,6 @@ function SyncNowAction({ reload }: { reload: () => void }) {
       await showToast({ style: Toast.Style.Failure, title: "Could not request sync", message: String(error) });
       return;
     }
-    reload();
     await showToast({ style: Toast.Style.Success, title: "Sync requested" });
   }
   return (
