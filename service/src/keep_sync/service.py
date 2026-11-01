@@ -107,18 +107,23 @@ class Wake:
 
 
 class _QueueHandler(FileSystemEventHandler):
-    """Wake the loop when the extension renames a new op file into the queue."""
+    """Wake the loop when the extension renames a new op file into the queue or touches the sync-now file."""
 
-    def __init__(self, queue_dir: Path, wake: threading.Event) -> None:
+    def __init__(self, queue_dir: Path, wake: Wake) -> None:
         self.queue_dir = queue_dir
         self.wake = wake
 
     def on_any_event(self, event: FileSystemEvent) -> None:
-        if event.event_type not in ("created", "moved"):
-            return
         path = Path(str(event.dest_path or event.src_path))
-        if path.parent == self.queue_dir and path.suffix == ".json" and not path.name.startswith("."):
-            self.wake.set()
+        if path.parent != self.queue_dir:
+            return
+        if path.name == SYNC_NOW_FILE:
+            # "modified": the file was already there, for example while the service was stopped.
+            if event.event_type in ("created", "modified", "moved"):
+                self.wake.sync_now.set()
+                self.wake.op.set()
+        elif event.event_type in ("created", "moved") and path.suffix == ".json" and not path.name.startswith("."):
+            self.wake.op.set()
 
 
 def watch_queue(queue_dir: Path, wake: threading.Event) -> BaseObserver:
