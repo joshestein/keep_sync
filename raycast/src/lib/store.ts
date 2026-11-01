@@ -34,7 +34,11 @@ export interface SyncStatus {
   error: { kind: "auth" | "network" | "other"; message: string } | null;
 }
 
+/** Must match CACHE_VERSION in service/src/keep_sync/cache.py. */
+const CACHE_VERSION = 2;
+
 interface Cache extends SyncStatus {
+  version: number;
   notes: CachedNote[];
 }
 
@@ -143,7 +147,9 @@ export function overlay(notes: CachedNote[], queued: QueuedOp[], failed: QueuedO
 export function loadNotes(appDir = APP_DIR): { notes: Note[]; status: SyncStatus | null } {
   let cache: Cache | null = null;
   try {
-    cache = JSON.parse(readFileSync(join(appDir, "cache.json"), "utf8")) as Cache;
+    const parsed = JSON.parse(readFileSync(join(appDir, "cache.json"), "utf8")) as Cache;
+    // An older service wrote it: list text has another form, so an edit would lose checked state.
+    if (parsed.version === CACHE_VERSION) cache = parsed;
   } catch {
     // No cache yet: the service has not synced. Queued ops still show.
   }

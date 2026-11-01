@@ -12,7 +12,8 @@ from gkeepapi.node import List, TopLevelNode
 from keep_sync import checklist
 from keep_sync.atomic import write_json_atomic
 
-CACHE_VERSION = 1
+# 2: a list's text is checklist text ("- [ ] a"), not plain item lines.
+CACHE_VERSION = 2
 
 ErrorKind = Literal["auth", "network", "other"]
 
@@ -61,7 +62,8 @@ def serialize_notes(keep: Keep) -> list[dict[str, Any]]:
 def read_cached_notes(path: Path) -> list[dict[str, Any]]:
     """The notes in the current cache.json, or [] if there is no usable file."""
     try:
-        notes = json.loads(path.read_text(encoding="utf-8"))["notes"]
+        data = json.loads(path.read_text(encoding="utf-8"))
+        notes = data["notes"] if data["version"] == CACHE_VERSION else []
     except (OSError, ValueError, TypeError, KeyError):
         return []
     return notes if isinstance(notes, list) else []
