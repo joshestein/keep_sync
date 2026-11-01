@@ -12,7 +12,7 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { escapeMarkdown, renderNote } from "./lib/markdown";
 import { displayTitle, filterNotes } from "./lib/search";
@@ -21,17 +21,29 @@ import { NoteForm } from "./note-form";
 
 const RELOAD_MS = 3000;
 
+function load(): { notes: Note[]; warning: string | null } {
+  const { notes, status } = loadNotes();
+  return { notes, warning: syncWarning(status) };
+}
+
 export default function Command() {
-  const [{ notes, status }, setData] = useState(() => loadNotes());
+  const [{ notes, warning }, setData] = useState(load);
   const [query, setQuery] = useState("");
-  const reload = () => setData(loadNotes());
+  // Keep the old state when nothing changed.
+  const reload = useCallback(
+    () =>
+      setData((prev) => {
+        const next = load();
+        return JSON.stringify(next) === JSON.stringify(prev) ? prev : next;
+      }),
+    [],
+  );
   // The service changes the files in the background: poll so pending states and the sync warning stay current.
   useEffect(() => {
-    const timer = setInterval(() => setData(loadNotes()), RELOAD_MS);
+    const timer = setInterval(reload, RELOAD_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [reload]);
   const shown = useMemo(() => filterNotes(notes, query), [notes, query]);
-  const warning = syncWarning(status);
 
   return (
     <List isShowingDetail filtering={false} onSearchTextChange={setQuery} searchBarPlaceholder="Search Keep notes">
