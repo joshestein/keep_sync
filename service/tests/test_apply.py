@@ -3,7 +3,7 @@ from pathlib import Path
 from gkeepapi import Keep
 from gkeepapi.node import TopLevelNode
 
-from keep_sync.apply import apply_queue, create_note, fallback_id
+from keep_sync.apply import SORT_STEP, apply_queue, create_note, fallback_id
 from keep_sync.queue import list_op_files
 
 from .conftest import NOTE_ID, OTHER_ID, WriteOp
@@ -185,3 +185,11 @@ def test_later_op_removes_op_that_failed_in_same_run(keep: Keep, queue_dir: Path
     delete = write_op("delete", note_id=lst.id)
 
     assert apply_queue(keep, queue_dir) == [delete, queue_dir / "failed" / bad.name]
+
+
+def test_new_note_goes_to_top_of_custom_order(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
+    """Like Keep clients: highest sortValue plus a step. gkeepapi's default is random."""
+    create_note(keep, "", "old", OTHER_ID).sort = 5_000_000_000
+    write_op("create", text="new")
+    apply_queue(keep, queue_dir)
+    assert keep.get(NOTE_ID).sort == 5_000_000_000 + SORT_STEP

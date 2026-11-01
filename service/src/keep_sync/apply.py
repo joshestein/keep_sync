@@ -17,9 +17,15 @@ def _is_gone(node: TopLevelNode | None) -> bool:
     return node is None or node.trashed or node.deleted
 
 
+# Keep clients put a new note at the top of the custom order: the highest sortValue plus this step.
+SORT_STEP = 2**20
+
+
 def create_note(keep: Keep, title: str, text: str, note_id: str) -> Note:
     # gkeepapi annotates **kwargs as dict, so the checker rejects a str id_.
     note = Note(id_=note_id)  # pyright: ignore[reportArgumentType]
+    # gkeepapi picks a random sortValue, which puts the note at a random place in Keep's custom order.
+    note.sort = max((n.sort for n in keep.all()), default=0) + SORT_STEP
     note.title = title
     note.text = text
     keep.add(note)
