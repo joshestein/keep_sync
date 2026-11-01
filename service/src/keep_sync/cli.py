@@ -4,7 +4,6 @@ import json
 import logging
 import shutil
 import sys
-import threading
 import uuid
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
@@ -17,7 +16,7 @@ from keep_sync import launchd
 from keep_sync.keychain import delete_credentials, read_credentials, save_credentials
 from keep_sync.paths import APP_DIR, CACHE_FILE, LAUNCHD_LOG_FILE, LOG_FILE, QUEUE_DIR, STATE_FILE
 from keep_sync.queue import list_op_files
-from keep_sync.service import Syncer, run_forever, watch_queue
+from keep_sync.service import Syncer, Wake, run_forever, watch_queue
 from keep_sync.state import load_state
 
 log = logging.getLogger(__name__)
@@ -71,7 +70,7 @@ def run(_: argparse.Namespace) -> None:
         # state.json is written only after a successful sync.
         synced_at=datetime.fromtimestamp(STATE_FILE.stat().st_mtime, UTC) if restored else None,
     )
-    wake = threading.Event()
+    wake = Wake()
     watch_queue(QUEUE_DIR, wake)
     log.info("started (state %s)", "restored" if restored else "missing: full sync first")
     run_forever(syncer, wake)
