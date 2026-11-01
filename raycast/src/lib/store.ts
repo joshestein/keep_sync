@@ -7,6 +7,8 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { isChecklist } from "./checklist";
+
 export const APP_DIR = join(homedir(), "Library", "Application Support", "keep-sync");
 
 export type Op =
@@ -14,10 +16,10 @@ export type Op =
 
 export interface CachedNote {
   id: string;
+  /** A list's `text` is checklist text ("- [ ] a" per item), so Edit works the same as for a note. */
   kind: "note" | "list";
   title: string;
   text: string;
-  items: { text: string; checked: boolean }[] | null;
   pinned: boolean;
   archived: boolean;
   color: string;
@@ -119,10 +121,10 @@ export function overlay(notes: CachedNote[], queued: QueuedOp[], failed: QueuedO
       byId.delete(op.note_id);
       return;
     }
+    // Like the service: a capture whose lines are all todos makes a list, and an update never changes the kind.
+    const kind = current?.kind ?? (isChecklist(op.text) ? "list" : "note");
     const base = current ?? {
       id: op.note_id,
-      kind: "note",
-      items: null,
       pinned: false,
       archived: false,
       color: "DEFAULT",
@@ -130,7 +132,7 @@ export function overlay(notes: CachedNote[], queued: QueuedOp[], failed: QueuedO
       url: `https://keep.google.com/u/0/#NOTE/${op.note_id}`,
     };
     // `updated` is the op time, so a capture or edit sorts to the top and the order is stable across reloads.
-    byId.set(op.note_id, { ...base, title: op.title, text: op.text, updated: new Date(at).toISOString(), state });
+    byId.set(op.note_id, { ...base, kind, title: op.title, text: op.text, updated: new Date(at).toISOString(), state });
   };
   failed.forEach((op) => apply(op, "failed"));
   queued.forEach((op) => apply(op, "pending"));
