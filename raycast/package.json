@@ -12,7 +12,7 @@
   "commands": [
     {
       "name": "search-notes",
-      "title": "Search Keep Notes",
+      "title": "Keep Notes",
       "description": "Search, copy, edit, and delete Keep notes",
       "mode": "view"
     },

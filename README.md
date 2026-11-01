@@ -22,7 +22,7 @@ The cookie works for a few minutes only, so run `setup` soon.
 ## Use
 
 - **New Keep Note**: type and submit. The window closes at once.
-- **Search Keep Notes**: search, copy, edit, and delete.
+- **Keep Notes**: search, copy, edit, and delete.
 - `keep-sync status`: sync time, error, and queue counts. Log: `~/Library/Logs/keep-sync.log`.
 - `keep-sync uninstall [--purge]`: remove the agent. `--purge` also removes the token and data.
 
