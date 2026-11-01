@@ -119,7 +119,8 @@ class _QueueHandler(FileSystemEventHandler):
             return
         if path.name == SYNC_NOW_FILE:
             # "modified": the file was already there, for example while the service was stopped.
-            if event.event_type in ("created", "modified", "moved"):
+            # FSEvents can merge an old "modified" flag into the unlink, so the file must still be there.
+            if event.event_type in ("created", "modified", "moved") and path.exists():
                 self.wake.sync_now.set()
                 self.wake.op.set()
         elif event.event_type in ("created", "moved") and path.suffix == ".json" and not path.name.startswith("."):
