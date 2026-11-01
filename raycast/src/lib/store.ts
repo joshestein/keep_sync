@@ -1,6 +1,6 @@
 /**
  * Local files shared with the keep-sync service. This module never touches the network.
- * The extension writes only op files. The service writes everything else.
+ * The extension writes only op files and the sync-now file. The service writes everything else.
  */
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -63,6 +63,16 @@ export function writeOp(op: Op, appDir = APP_DIR): void {
   const tmp = join(dir, `.${name}.tmp`);
   writeFileSync(tmp, JSON.stringify(op), { mode: 0o600, flush: true });
   renameSync(tmp, join(dir, name));
+}
+
+/** Touched in the queue directory to ask the service for a round now. Must match SYNC_NOW_FILE in queue.py. */
+export const SYNC_NOW_FILE = "sync-now";
+
+/** Ask the service to sync now, even during a backoff. The content does not matter, so no atomic write. */
+export function requestSync(appDir = APP_DIR): void {
+  const dir = join(appDir, "queue");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, SYNC_NOW_FILE), "");
 }
 
 export function createNote(title: string, text: string, appDir = APP_DIR): void {
