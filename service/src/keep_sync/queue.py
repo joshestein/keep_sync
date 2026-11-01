@@ -13,6 +13,9 @@ OpKind = Literal["create", "update", "delete"]
 NOTE_ID_RE = re.compile(r"[0-9a-f]+\.[0-9a-f]{16}")
 # Op file names: "<Date.now()>-<hex>.json". Must match OP_FILE in raycast/src/lib/store.ts.
 OP_FILE_RE = re.compile(r"\d+-[0-9a-f]+\.json")
+# The extension touches this file in the queue directory to ask for a round now, even during a backoff.
+# Must match SYNC_NOW_FILE in raycast/src/lib/store.ts.
+SYNC_NOW_FILE = "sync-now"
 
 
 class InvalidOp(ValueError):
