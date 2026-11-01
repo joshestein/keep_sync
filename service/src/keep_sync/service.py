@@ -98,6 +98,14 @@ class Syncer:
         return error
 
 
+@dataclass(frozen=True)
+class Wake:
+    """op: a new op file. sync_now: the user asked for a round now. sync_now also sets op."""
+
+    op: threading.Event = field(default_factory=threading.Event)
+    sync_now: threading.Event = field(default_factory=threading.Event)
+
+
 class _QueueHandler(FileSystemEventHandler):
     """Wake the loop when the extension renames a new op file into the queue."""
 
