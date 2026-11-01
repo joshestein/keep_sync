@@ -1,6 +1,8 @@
 # Glossary
 
-**Note**: A Google Keep note (title, text, pinned, archived, color, labels). Checklists are notes that the Mac shows read-only as text.
+**Note**: A Google Keep note (title, text, pinned, archived, color, labels). A list (checklist) is also a note.
+
+**Checklist text**: The plain-text form of a list that the Mac shows and edits: one item per line, as `- [ ] item` or `- [x] item`. A capture whose lines are all in this form makes a list.
 
 **Note id**: The Keep id of a note. The client that creates the note makes the id, not the Keep server. A note has its note id from the moment of capture.
 
