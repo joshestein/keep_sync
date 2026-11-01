@@ -11,6 +11,8 @@ import {
   overlay,
   QueuedOp,
   readOps,
+  requestSync,
+  SYNC_NOW_FILE,
   syncWarning,
   writeOp,
 } from "../src/lib/store";
@@ -181,5 +183,15 @@ describe("syncWarning", () => {
     expect(syncWarning({ ...ok, error: { kind: "network", message: "offline" } }, now)).toContain("offline");
     expect(syncWarning({ ...ok, synced_at: "2026-10-31T11:00:00.000Z" }, now)).toBe("Last sync 60 min ago.");
     expect(syncWarning(null, now)).toContain("service");
+  });
+});
+
+describe("requestSync", () => {
+  it("touches the sync-now file, which readOps skips", () => {
+    const appDir = mkdtempSync(join(tmpdir(), "keep-sync-"));
+    requestSync(appDir);
+    requestSync(appDir);
+    expect(readdirSync(join(appDir, "queue"))).toEqual([SYNC_NOW_FILE]);
+    expect(readOps(join(appDir, "queue"))).toEqual([]);
   });
 });
