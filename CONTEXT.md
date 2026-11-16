@@ -8,6 +8,10 @@
 
 **Capture**: To make a new note on the Mac. A capture never waits for the network.
 
+**Append**: To add text to the end of an existing note. For a list, the text becomes one new unchecked item. An append waits for a sync, so it builds on the newest copy of the note.
+
+**Inbox**: Where other programs put captures and appends, one file each, for the service to turn into ops.
+
 **Op**: One requested change to a note: `create`, `update`, or `delete`. Every op names its note by note id.
 
 **Delete**: To move a note to Keep's trash. A deleted note is recoverable in Keep for 7 days. The Mac never deletes a note permanently.
