@@ -3,9 +3,12 @@
 import json
 import os
 import re
+import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast, get_args
+
+from keep_sync.atomic import write_json_atomic
 
 OpKind = Literal["create", "update", "delete"]
 
@@ -60,6 +63,22 @@ def parse_op(path: Path) -> Op:
         raise InvalidOp("title and text must be strings")
 
     return Op(kind=cast(OpKind, kind), note_id=note_id, title=title, text=text)
+
+
+def mint_note_id(now_ms: int) -> str:
+    """A new note id. Same as mintNoteId in raycast/src/lib/store.ts (ADR 0001)."""
+    return f"{now_ms:x}.{secrets.token_hex(8)}"
+
+
+def write_op(queue_dir: Path, op: Op, now_ms: int) -> Path:
+    """Write one op file, atomically. Same as writeOp in raycast/src/lib/store.ts (ADR 0002).
+
+    The time in the name is after every queued and failed op, so a clock step back cannot put it before them.
+    """
+    times = [int(p.name.split("-")[0]) for d in (queue_dir, queue_dir / "failed") for p in list_op_files(d)]
+    path = queue_dir / f"{max([now_ms, *(t + 1 for t in times)])}-{secrets.token_hex(4)}.json"
+    write_json_atomic(path, {"op": op.kind, "note_id": op.note_id, "title": op.title, "text": op.text})
+    return path
 
 
 def move_to_failed(path: Path) -> None:
