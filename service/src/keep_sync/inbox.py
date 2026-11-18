@@ -37,22 +37,18 @@ def parse_inbox_file(path: Path) -> InboxItem:
         raise InvalidInboxFile(f"unreadable: {e}") from e
     if not isinstance(raw, dict):
         raise InvalidInboxFile("not an object")
-    text = raw.get("text")
-    text = text.strip() if isinstance(text, str) else ""
-    if not text:
+    text, append_to = raw.get("text"), raw.get("append_to")
+    if not isinstance(text, str) or not text.strip():
         raise InvalidInboxFile("text must be a non-empty string")
-    append_to = raw.get("append_to")
-    if append_to is not None and (not isinstance(append_to, str) or not append_to):
+    if append_to is not None and not (isinstance(append_to, str) and append_to):
         raise InvalidInboxFile("append_to must be a non-empty string")
-    return InboxItem(text, append_to)
+    return InboxItem(text.strip(), append_to)
 
 
 def appended_text(node: TopLevelNode, text: str) -> str:
     """For a list, text becomes one new unchecked item."""
     if isinstance(node, List):
-        old = checklist.format_items(node.items)
-        # One file is one item: a newline in text would make more items.
-        new = f"- [ ] {' '.join(text.split())}"
+        old, new = checklist.format_items(node.items), f"- [ ] {' '.join(text.split())}"
     else:
         old, new = node.text, text
     # A trailing newline in the old text would put a blank line before the new text.
