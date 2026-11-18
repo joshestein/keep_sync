@@ -13,8 +13,17 @@ import gpsoauth
 from gkeepapi import Keep
 
 from keep_sync import launchd
+from keep_sync.inbox import Inbox
 from keep_sync.keychain import delete_credentials, read_credentials, save_credentials
-from keep_sync.paths import APP_DIR, CACHE_FILE, LAUNCHD_LOG_FILE, LOG_FILE, QUEUE_DIR, STATE_FILE
+from keep_sync.paths import (
+    APP_DIR,
+    CACHE_FILE,
+    INBOX_DIR,
+    LAUNCHD_LOG_FILE,
+    LOG_FILE,
+    QUEUE_DIR,
+    STATE_FILE,
+)
 from keep_sync.queue import list_op_files
 from keep_sync.service import Syncer, Wake, run_forever, watch_queue
 from keep_sync.state import load_state
@@ -58,12 +67,14 @@ def run(_: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, handlers=[handler])
 
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+    INBOX_DIR.mkdir(parents=True, exist_ok=True)
     keep = Keep()
     restored = load_state(keep, STATE_FILE)
     syncer = Syncer(
         keep=keep,
         login=_login,
         queue_dir=QUEUE_DIR,
+        inbox=Inbox(INBOX_DIR),
         cache_file=CACHE_FILE,
         state_file=STATE_FILE,
         needs_full_sync=not restored,
