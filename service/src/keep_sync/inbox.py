@@ -97,7 +97,11 @@ class Inbox:
                 continue
             node = keep.get(item.append_to)
             if node is None or node.trashed or node.deleted:
-                log.warning("failed inbox file %s: note %s is missing or trashed", path.name, item.append_to)
+                log.warning(
+                    "failed inbox file %s: note %s is missing or trashed",
+                    path.name,
+                    item.append_to,
+                )
                 self._fail(path)
                 continue
             # An archived note is still a valid target: the caller named it by id.

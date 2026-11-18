@@ -40,7 +40,12 @@ def test_set_items_replaces_items_in_order() -> None:
     lst = Keep().createList("L", [("a", False), ("b", False)])
     old = lst.items
     set_items(lst, parse("- [x] b\n  - [ ] new\n  - [x] a\n- [ ] c"))
-    assert shape(lst) == [("b", True, None), ("new", False, "b"), ("a", True, "b"), ("c", False, None)]
+    assert shape(lst) == [
+        ("b", True, None),
+        ("new", False, "b"),
+        ("a", True, "b"),
+        ("c", False, None),
+    ]
     assert all(i.deleted and i.dirty for i in old)
 
 

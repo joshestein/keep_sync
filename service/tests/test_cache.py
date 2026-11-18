@@ -5,7 +5,15 @@ from pathlib import Path
 from gkeepapi import Keep
 
 from keep_sync.apply import create_note
-from keep_sync.cache import CACHE_VERSION, Status, SyncError, iso, read_cached_notes, serialize_notes, write_cache
+from keep_sync.cache import (
+    CACHE_VERSION,
+    Status,
+    SyncError,
+    iso,
+    read_cached_notes,
+    serialize_notes,
+    write_cache,
+)
 
 from .conftest import NOTE_ID, OTHER_ID
 
@@ -47,7 +55,11 @@ def test_write_cache(tmp_path: Path) -> None:
     at = datetime(2026, 10, 29, tzinfo=UTC)
     notes = [{"id": "1", "title": "T"}]
 
-    write_cache(path, notes, Status(synced_at=None, last_attempt_at=at, error=SyncError("auth", "revoked")))
+    write_cache(
+        path,
+        notes,
+        Status(synced_at=None, last_attempt_at=at, error=SyncError("auth", "revoked")),
+    )
 
     data = json.loads(path.read_text())
     assert data["version"] == CACHE_VERSION
@@ -55,7 +67,6 @@ def test_write_cache(tmp_path: Path) -> None:
     assert data["last_attempt_at"] == "2026-10-29T00:00:00.000Z"
     assert data["error"] == {"kind": "auth", "message": "revoked"}
     assert data["notes"] == notes
-
 
 
 def test_read_cached_notes(tmp_path: Path) -> None:

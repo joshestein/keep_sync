@@ -97,9 +97,7 @@ def status(_: argparse.Namespace) -> None:
         error = cache["error"]
         print(f"synced:       {cache['synced_at'] or 'never'}")
         print(f"attempt:      {cache['last_attempt_at']}")
-        print(
-            f"error:        {f'{error["kind"]}: {error["message"]}' if error else 'none'}"
-        )
+        print(f"error:        {f'{error["kind"]}: {error["message"]}' if error else 'none'}")
         print(f"notes:        {len(cache['notes'])}")
     print(f"queued:       {len(list_op_files(QUEUE_DIR)) if QUEUE_DIR.exists() else 0}")
     failed = QUEUE_DIR / "failed"
@@ -114,7 +112,8 @@ def uninstall(args: argparse.Namespace) -> None:
     print("Service removed.")
     if not args.purge:
         return
-    queued = len(list_op_files(QUEUE_DIR)) if QUEUE_DIR.exists() else 0
+    # Only ops still in the queue, and inbox files, would be lost.
+    queued = (len(list_op_files(QUEUE_DIR)) if QUEUE_DIR.exists() else 0) + len(Inbox(INBOX_DIR).files())
     if queued and input(f"{queued} ops are not synced and will be lost. Type 'yes' to continue: ") != "yes":
         sys.exit("Stopped. The Keychain item and data are kept.")
     delete_credentials()
@@ -125,11 +124,17 @@ def uninstall(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="keep-sync", description="Sync Google Keep to local files for Raycast.")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("setup", help="get a master token, save it to Keychain, install the service").set_defaults(fn=setup)
+    commands.add_parser("setup", help="get a master token, save it to Keychain, install the service").set_defaults(
+        fn=setup
+    )
     commands.add_parser("run", help="run the sync loop (launchd runs this)").set_defaults(fn=run)
     commands.add_parser("status", help="show sync status").set_defaults(fn=status)
     remove = commands.add_parser("uninstall", help="remove the service")
-    remove.add_argument("--purge", action="store_true", help="also delete the Keychain item and all local data")
+    remove.add_argument(
+        "--purge",
+        action="store_true",
+        help="also delete the Keychain item and all local data",
+    )
     remove.set_defaults(fn=uninstall)
     args = parser.parse_args()
     args.fn(args)

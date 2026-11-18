@@ -5,7 +5,12 @@ import sys
 import pytest
 
 from keep_sync import keychain
-from keep_sync.keychain import KeychainError, delete_credentials, read_credentials, save_credentials
+from keep_sync.keychain import (
+    KeychainError,
+    delete_credentials,
+    read_credentials,
+    save_credentials,
+)
 
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS Keychain")
 

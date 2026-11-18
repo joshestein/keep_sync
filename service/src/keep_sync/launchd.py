@@ -36,7 +36,11 @@ def install(program: list[str], stdio_log: Path) -> None:
     # bootout finishes asynchronously, so an immediate bootstrap can fail with an I/O error.
     error = ""
     for _ in range(10):
-        result = subprocess.run(["launchctl", "bootstrap", _domain(), str(PLIST_FILE)], capture_output=True, text=True)
+        result = subprocess.run(
+            ["launchctl", "bootstrap", _domain(), str(PLIST_FILE)],
+            capture_output=True,
+            text=True,
+        )
         if result.returncode == 0:
             return
         error = result.stderr.strip()

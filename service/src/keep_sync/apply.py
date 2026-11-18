@@ -62,7 +62,11 @@ def apply_op(keep: Keep, op: Op) -> None:
                 node = keep.get(note_id)
                 if node is None:
                     create_note(keep, op.title, op.text, note_id)
-                    log.warning("update for missing or trashed note %s: created %s", op.note_id, note_id)
+                    log.warning(
+                        "update for missing or trashed note %s: created %s",
+                        op.note_id,
+                        note_id,
+                    )
                     return
             # Skip unchanged fields so a replayed op does not touch the note.
             if node.title != op.title:

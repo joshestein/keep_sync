@@ -89,9 +89,7 @@ def test_edits_to_one_gone_note_make_one_new_note(keep: Keep, queue_dir: Path, w
     assert note.text == "edit 2"
 
 
-def test_update_after_fallback_note_trashed_makes_next_fallback(
-    keep: Keep, queue_dir: Path, write_op: WriteOp
-) -> None:
+def test_update_after_fallback_note_trashed_makes_next_fallback(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:
     write_op("update", note_id="gone", title="", text="first")
     apply_queue(keep, queue_dir)
     keep.get(fallback_id("gone")).trash()
@@ -128,7 +126,11 @@ def test_update_list_replaces_items(keep: Keep, queue_dir: Path, write_op: Write
     write_op("update", note_id=lst.id, title="L2", text="- [x] a\n- [ ] b\nc")
     apply_queue(keep, queue_dir)
     assert lst.title == "L2"
-    assert [(i.text, i.checked) for i in lst.items] == [("a", True), ("b", False), ("c", False)]
+    assert [(i.text, i.checked) for i in lst.items] == [
+        ("a", True),
+        ("b", False),
+        ("c", False),
+    ]
 
 
 def test_update_note_with_todo_text_stays_a_note(keep: Keep, queue_dir: Path, write_op: WriteOp) -> None:

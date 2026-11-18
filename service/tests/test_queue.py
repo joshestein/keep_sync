@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from keep_sync.queue import InvalidOp, Op, list_op_files, move_to_failed, parse_op, remove_ops
+from keep_sync.queue import (
+    InvalidOp,
+    Op,
+    list_op_files,
+    move_to_failed,
+    parse_op,
+    remove_ops,
+)
 
 from .conftest import NOTE_ID, WriteOp
 
