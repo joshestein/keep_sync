@@ -1,5 +1,6 @@
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,9 +9,12 @@ import requests
 from gkeepapi import Keep
 from gkeepapi.exception import APIException, LoginException, ResyncRequiredException
 
+from keep_sync.apply import create_note
 from keep_sync.cache import CACHE_VERSION, SyncError
+from keep_sync import service
+from keep_sync.inbox import Inbox
 from keep_sync.keychain import KeychainError
-from keep_sync.queue import list_op_files
+from keep_sync.queue import list_op_files, parse_op
 from keep_sync.service import (
     MAX_BACKOFF_SECONDS,
     POLL_SECONDS,
@@ -22,7 +26,7 @@ from keep_sync.service import (
     wait_for_next_round,
 )
 
-from .conftest import NOTE_ID, WriteOp
+from .conftest import NOTE_ID, OTHER_ID, WriteInbox, WriteOp
 
 
 class FakeServer:
@@ -35,11 +39,15 @@ class FakeServer:
         self.keep = keep
         self.calls: list[bool] = []
         self.errors: list[Exception | None] = []
+        # Changes from other devices, pulled on each sync.
+        self.pull: Callable[[], None] | None = None
 
     def sync(self, resync: bool = False) -> None:
         self.calls.append(resync)
         if resync:
             self.keep.restore({"keep_version": None, "labels": [], "nodes": []})
+        if self.pull is not None:
+            self.pull()
         if self.errors and (error := self.errors.pop(0)) is not None:
             raise error
 
@@ -57,12 +65,13 @@ def logins() -> list[Keep]:
 
 
 @pytest.fixture
-def make_syncer(keep: Keep, queue_dir: Path, tmp_path: Path, logins: list[Keep]):
+def make_syncer(keep: Keep, queue_dir: Path, inbox_dir: Path, tmp_path: Path, logins: list[Keep]):
     def make(needs_full_sync: bool = False) -> Syncer:
         return Syncer(
             keep=keep,
             login=logins.append,
             queue_dir=queue_dir,
+            inbox=Inbox(inbox_dir),
             cache_file=tmp_path / "cache.json",
             state_file=tmp_path / "state.json",
             needs_full_sync=needs_full_sync,
@@ -164,7 +173,10 @@ def test_failed_resync_keeps_the_cached_notes(
     syncer = make_syncer()
     write_op("create", text="milk")
     syncer.round()
-    server.errors = [ResyncRequiredException("Full resync required"), requests.ConnectionError("offline")]
+    server.errors = [
+        ResyncRequiredException("Full resync required"),
+        requests.ConnectionError("offline"),
+    ]
 
     syncer.round()
     syncer.round()
@@ -208,6 +220,134 @@ def test_login_failure_applies_nothing(make_syncer, server: FakeServer, queue_di
     assert read_cache(syncer)["notes"] == []
 
 
+def test_inbox_append_builds_on_the_pulled_note(
+    make_syncer,
+    keep: Keep,
+    server: FakeServer,
+    inbox_dir: Path,
+    write_inbox: WriteInbox,
+) -> None:
+    """The model is from the last round. An append built from it would lose the phone edit."""
+    syncer = make_syncer()
+    create_note(keep, "Ideas", "a", OTHER_ID)
+
+    def phone_edit() -> None:
+        keep.get(OTHER_ID).text = "a from phone"
+        server.pull = None
+
+    server.pull = phone_edit
+    write_inbox(text="b", append_to=OTHER_ID)
+
+    assert syncer.round() is None
+
+    assert server.calls == [False, False]
+    assert (keep.get(OTHER_ID).title, keep.get(OTHER_ID).text) == (
+        "Ideas",
+        "a from phone\nb",
+    )
+    assert list(inbox_dir.glob("*.json")) == []
+
+
+def test_inbox_append_keeps_a_queued_raycast_edit(
+    make_syncer,
+    keep: Keep,
+    server: FakeServer,
+    queue_dir: Path,
+    write_op: WriteOp,
+    write_inbox: WriteInbox,
+) -> None:
+    syncer = make_syncer()
+    create_note(keep, "Ideas", "a", OTHER_ID)
+    write_op("update", note_id=OTHER_ID, title="Ideas v2", text="a edited")
+    write_inbox(text="b", append_to=OTHER_ID)
+
+    assert syncer.round() is None
+
+    assert (keep.get(OTHER_ID).title, keep.get(OTHER_ID).text) == (
+        "Ideas v2",
+        "a edited\nb",
+    )
+    assert list_op_files(queue_dir) == []
+
+
+def test_inbox_offline_queues_creates_and_keeps_appends(
+    make_syncer,
+    keep: Keep,
+    server: FakeServer,
+    queue_dir: Path,
+    write_inbox: WriteInbox,
+) -> None:
+    syncer = make_syncer()
+    create_note(keep, "Ideas", "a", OTHER_ID)
+    capture = write_inbox(text="new note")
+    append = write_inbox(text="b", append_to=OTHER_ID)
+    server.errors = [requests.ConnectionError("offline")]
+
+    syncer.round()
+
+    assert [parse_op(p).kind for p in list_op_files(queue_dir)] == ["create"]
+    assert not capture.exists()
+    assert append.exists()
+    assert keep.get(OTHER_ID).text == "a"
+    # The Mac shows the capture before Keep has it.
+    assert any(n["text"] == "new note" for n in read_cache(syncer)["notes"])
+
+
+def test_inbox_append_stays_queued_when_the_second_sync_fails(
+    make_syncer,
+    keep: Keep,
+    server: FakeServer,
+    queue_dir: Path,
+    write_op: WriteOp,
+    write_inbox: WriteInbox,
+) -> None:
+    syncer = make_syncer()
+    create_note(keep, "Ideas", "a", OTHER_ID)
+    write_op("create", text="milk")
+    append = write_inbox(text="b", append_to=OTHER_ID)
+    server.errors = [None, requests.ConnectionError("offline")]
+
+    assert syncer.round() is not None
+
+    # The first sync sent the create, so it is gone. A replay could only overwrite newer edits.
+    assert syncer.state_file.exists()
+    assert not append.exists()
+    [op] = [parse_op(p) for p in list_op_files(queue_dir)]
+    assert (op.kind, op.text) == ("update", "a\nb")
+    assert read_cache(syncer)["error"]["kind"] == "network"
+
+    assert syncer.round() is None
+    assert keep.get(OTHER_ID).text == "a\nb"
+    assert list_op_files(queue_dir) == []
+
+
+def test_state_write_failure_after_sync_still_removes_the_sent_ops(
+    make_syncer,
+    server: FakeServer,
+    queue_dir: Path,
+    write_op: WriteOp,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep has the ops. A replay next round could only overwrite newer edits from other devices."""
+
+    def disk_full(*_: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(service, "save_state", disk_full)
+    syncer = make_syncer()
+    write_op("create", text="milk")
+
+    assert syncer.round() is not None
+    assert list_op_files(queue_dir) == []
+
+
+def test_no_append_no_second_sync(make_syncer, server: FakeServer, write_inbox: WriteInbox) -> None:
+    syncer = make_syncer()
+    write_inbox(text="new note")
+    assert syncer.round() is None
+    assert server.calls == [False]
+
+
 @pytest.mark.parametrize(
     ("error", "kind"),
     [
@@ -227,7 +367,13 @@ def test_classify(error: Exception, kind: str) -> None:
 def test_backoff() -> None:
     network = SyncError("network", "")
     assert backoff_seconds(None, 0) == POLL_SECONDS
-    assert [backoff_seconds(network, n) for n in (1, 2, 3, 4, 5)] == [60, 120, 240, 480, MAX_BACKOFF_SECONDS]
+    assert [backoff_seconds(network, n) for n in (1, 2, 3, 4, 5)] == [
+        60,
+        120,
+        240,
+        480,
+        MAX_BACKOFF_SECONDS,
+    ]
     assert backoff_seconds(SyncError("auth", ""), 1) == MAX_BACKOFF_SECONDS
 
 
@@ -255,7 +401,9 @@ def test_queue_handler_wakes_only_on_new_ops_and_sync_now(
         (queue_dir / src).touch()
     src = src.removesuffix("-gone")
     event = SimpleNamespace(
-        event_type=event_type, src_path=str(queue_dir / src), dest_path=str(queue_dir / dest) if dest else ""
+        event_type=event_type,
+        src_path=str(queue_dir / src),
+        dest_path=str(queue_dir / dest) if dest else "",
     )
     _QueueHandler(queue_dir, wake).on_any_event(event)  # pyright: ignore[reportArgumentType]
     assert (wake.op.is_set(), wake.sync_now.is_set()) == (op, sync_now)
