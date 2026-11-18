@@ -63,5 +63,9 @@ def test_move_to_failed_and_remove(queue_dir: Path, write_op: WriteOp) -> None:
     good = write_op("delete")
     move_to_failed(bad)
     assert (queue_dir / "failed" / bad.name).exists()
+    # A second file with the same name does not overwrite the first.
+    bad.write_text("{")
+    move_to_failed(bad)
+    assert len(list((queue_dir / "failed").glob("*.json"))) == 2
     remove_ops([good, good])
     assert list_op_files(queue_dir) == []
