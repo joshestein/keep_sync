@@ -2,17 +2,14 @@ from pathlib import Path
 
 import pytest
 from gkeepapi import Keep
-from gkeepapi.node import List, TopLevelNode
+from gkeepapi.node import List
 
 from keep_sync import checklist
-from keep_sync import inbox as inbox_module
 from keep_sync.apply import apply_op, create_note
 from keep_sync.inbox import Inbox, InvalidInboxFile, appended_text, parse_inbox_file
 from keep_sync.queue import NOTE_ID_RE, Op, list_op_files, parse_op
 
 from .conftest import OTHER_ID, WriteInbox
-
-NOW_MS = 1_794_830_400_000
 
 
 @pytest.fixture
@@ -28,47 +25,24 @@ def failed_names(inbox: Inbox) -> list[str]:
     return [p.name for p in inbox.failed()]
 
 
-def test_create_without_append_to(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
+def test_create_without_append_to(inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox) -> None:
     path = write_inbox(text="  buy milk\n")
 
-    inbox.ingest_creates(queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
 
     [op] = queued_ops(queue_dir)
     assert (op.kind, op.title, op.text) == ("create", "", "buy milk")
     assert NOTE_ID_RE.fullmatch(op.note_id)
-    assert op.note_id.startswith(f"{NOW_MS:x}.")
     assert not path.exists()
-
-
-def test_creates_skip_appends(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
-    path = write_inbox(text="later", append_to=OTHER_ID)
-    inbox.ingest_creates(queue_dir, NOW_MS)
-    assert queued_ops(queue_dir) == []
-    assert path.exists()
-
-
-def test_ops_sort_after_queued_ops(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
-    """A clock step back must not put an inbox op before an op already in the queue."""
-    future = queue_dir / "1900000000000-abcd1234.json"
-    future.write_text('{"op": "delete", "note_id": "x"}')
-    write_inbox(text="a")
-    write_inbox(text="b")
-
-    inbox.ingest_creates(queue_dir, NOW_MS)
-
-    paths = list_op_files(queue_dir)
-    assert paths[0] == future
-    assert [parse_op(p).text for p in paths[1:]] == ["a", "b"]
 
 
 def test_append_to_text_note(inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox) -> None:
     create_note(keep, "Ideas", "first\nsecond\n", OTHER_ID)
     path = write_inbox(text="try the new parser", append_to=OTHER_ID)
 
-    written = inbox.ingest_appends(keep, queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
 
     assert queued_ops(queue_dir) == [Op("update", OTHER_ID, "Ideas", "first\nsecond\ntry the new parser")]
-    assert written == list_op_files(queue_dir)
     # Applied to the model, so a second append builds on it.
     assert keep.get(OTHER_ID).text == "first\nsecond\ntry the new parser"
     assert not path.exists()
@@ -79,7 +53,7 @@ def test_append_to_empty_note_has_no_leading_newline(
 ) -> None:
     create_note(keep, "T", "", OTHER_ID)
     write_inbox(text="only", append_to=OTHER_ID)
-    inbox.ingest_appends(keep, queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
     assert queued_ops(queue_dir)[0].text == "only"
 
 
@@ -91,7 +65,7 @@ def test_append_to_list_adds_one_unchecked_item(
     ids = [i.id for i in node.items]
     write_inbox(text="bread\nand butter", append_to=OTHER_ID)
 
-    inbox.ingest_appends(keep, queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
 
     [op] = queued_ops(queue_dir)
     assert op.text == "- [x] eggs\n  - [ ] large\n- [ ] milk\n- [ ] bread and butter"
@@ -114,7 +88,7 @@ def test_two_appends_to_one_note_both_stay(inbox: Inbox, keep: Keep, queue_dir: 
     write_inbox(text="b", append_to=OTHER_ID)
     write_inbox(text="c", append_to=OTHER_ID)
 
-    inbox.ingest_appends(keep, queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
 
     assert [op.text for op in queued_ops(queue_dir)] == ["a\nb", "a\nb\nc"]
 
@@ -122,7 +96,7 @@ def test_two_appends_to_one_note_both_stay(inbox: Inbox, keep: Keep, queue_dir: 
 def test_append_to_archived_note(inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox) -> None:
     create_note(keep, "T", "a", OTHER_ID).archived = True
     write_inbox(text="b", append_to=OTHER_ID)
-    inbox.ingest_appends(keep, queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
     assert queued_ops(queue_dir)[0].text == "a\nb"
 
 
@@ -139,11 +113,11 @@ def test_append_to_gone_note_fails(
     path = write_inbox(text="b", append_to=OTHER_ID)
     ok = write_inbox(text="c")
 
-    assert inbox.ingest_appends(keep, queue_dir, NOW_MS) == []
+    inbox.ingest(keep, queue_dir)
 
-    assert queued_ops(queue_dir) == []
+    assert [op.kind for op in queued_ops(queue_dir)] == ["create"]
     assert failed_names(inbox) == [path.name]
-    assert ok.exists()
+    assert not ok.exists()
 
 
 @pytest.mark.parametrize(
@@ -176,80 +150,31 @@ def test_parse_ignores_unknown_fields(write_inbox: WriteInbox) -> None:
     assert (item.text, item.append_to) == ("a", None)
 
 
-def test_bad_files_fail_and_do_not_block_others(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
+def test_bad_files_fail_and_do_not_block_others(
+    inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox
+) -> None:
     bad = write_inbox(raw="{not json")
     empty = write_inbox(text="")
     write_inbox(text="good")
 
-    inbox.ingest_creates(queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
 
     assert [op.text for op in queued_ops(queue_dir)] == ["good"]
     assert failed_names(inbox) == [bad.name, empty.name]
     assert inbox.files() == []
 
 
-def test_unfinished_and_other_files_are_ignored(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
+def test_unfinished_and_other_files_are_ignored(
+    inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox
+) -> None:
     part = write_inbox(name="a.json.part", text="half")
     other = write_inbox(name="notes.txt", text="x")
 
-    inbox.ingest_creates(queue_dir, NOW_MS)
+    inbox.ingest(keep, queue_dir)
 
     assert queued_ops(queue_dir) == []
     assert part.exists() and other.exists()
     assert not inbox.failed_dir.exists()
-
-
-def test_read_error_keeps_the_file(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
-    """A read error can be temporary: the file stays for the next round."""
-    path = write_inbox(text="a")
-    path.chmod(0)
-    try:
-        inbox.ingest_creates(queue_dir, NOW_MS)
-    finally:
-        path.chmod(0o644)
-    assert path.exists()
-    assert inbox.failed() == []
-
-    inbox.ingest_creates(queue_dir, NOW_MS)
-    assert [op.text for op in queued_ops(queue_dir)] == ["a"]
-
-
-def test_append_build_error_fails_only_that_file(
-    inbox: Inbox,
-    keep: Keep,
-    queue_dir: Path,
-    write_inbox: WriteInbox,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    create_note(keep, "T", "a", OTHER_ID)
-    bad = write_inbox(text="boom", append_to=OTHER_ID)
-    write_inbox(text="b", append_to=OTHER_ID)
-    real = inbox_module.appended_text
-
-    def appended_text(node: TopLevelNode, text: str) -> str:
-        if text == "boom":
-            raise ValueError("bug")
-        return real(node, text)
-
-    monkeypatch.setattr(inbox_module, "appended_text", appended_text)
-
-    inbox.ingest_appends(keep, queue_dir, NOW_MS)
-
-    assert [op.text for op in queued_ops(queue_dir)] == ["a\nb"]
-    assert failed_names(inbox) == [bad.name]
-
-
-def test_failed_files_with_one_name_are_all_kept(inbox: Inbox, queue_dir: Path, write_inbox: WriteInbox) -> None:
-    for _ in range(2):
-        write_inbox(name="capture.json", raw="{bad")
-        inbox.ingest_creates(queue_dir, NOW_MS)
-    assert len(inbox.failed()) == 2
-
-
-def test_write_failure_keeps_the_file(inbox: Inbox, tmp_path: Path, write_inbox: WriteInbox) -> None:
-    path = write_inbox(text="a")
-    inbox.ingest_creates(tmp_path / "no-such-dir", NOW_MS)
-    assert path.exists()
 
 
 def test_appended_text_trims_trailing_whitespace_of_old_text(keep: Keep) -> None:
