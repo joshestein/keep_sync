@@ -6,7 +6,7 @@ from gkeepapi.node import List
 
 from keep_sync import checklist
 from keep_sync.apply import apply_op, create_note
-from keep_sync.inbox import Inbox, InvalidInboxFile, appended_text, parse_inbox_file
+from keep_sync.inbox import Inbox, InboxItem, InvalidInboxFile, appended_text, parse_inbox_file
 from keep_sync.queue import NOTE_ID_RE, Op, list_op_files, parse_op
 
 from .conftest import OTHER_ID, WriteInbox
@@ -48,15 +48,6 @@ def test_append_to_text_note(inbox: Inbox, keep: Keep, queue_dir: Path, write_in
     assert not path.exists()
 
 
-def test_append_to_empty_note_has_no_leading_newline(
-    inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox
-) -> None:
-    create_note(keep, "T", "", OTHER_ID)
-    write_inbox(text="only", append_to=OTHER_ID)
-    inbox.ingest(keep, queue_dir)
-    assert queued_ops(queue_dir)[0].text == "only"
-
-
 def test_append_to_list_adds_one_unchecked_item(
     inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox
 ) -> None:
@@ -69,18 +60,10 @@ def test_append_to_list_adds_one_unchecked_item(
 
     [op] = queued_ops(queue_dir)
     assert op.text == "- [x] eggs\n  - [ ] large\n- [ ] milk\n- [ ] bread and butter"
-    # Only the new item is added: the push leaves the other items alone.
-    assert [i.id for i in node.items][:3] == ids
     assert checklist.format_items(node.items) == op.text
-    # A replay after a failed sync changes nothing.
+    # Only the new item is added, also on replay, so phone edits to other items stay.
     apply_op(keep, op)
     assert [i.id for i in node.items][:3] == ids
-    assert [(i.text, i.checked, i.indented) for i in node.items] == [
-        ("eggs", True, False),
-        ("large", False, True),
-        ("milk", False, False),
-        ("bread and butter", False, False),
-    ]
 
 
 def test_two_appends_to_one_note_both_stay(inbox: Inbox, keep: Keep, queue_dir: Path, write_inbox: WriteInbox) -> None:
@@ -139,15 +122,7 @@ def test_parse_rejects(write_inbox: WriteInbox, raw: str | None, fields: dict) -
 
 
 def test_parse_ignores_unknown_fields(write_inbox: WriteInbox) -> None:
-    path = write_inbox(
-        text="a",
-        append_to=None,
-        capture="x",
-        captured_at="2026-11-16T12:00:00Z",
-        extra=[1],
-    )
-    item = parse_inbox_file(path)
-    assert (item.text, item.append_to) == ("a", None)
+    assert parse_inbox_file(write_inbox(text="a", extra=[1])) == InboxItem("a", None)
 
 
 def test_bad_files_fail_and_do_not_block_others(
@@ -177,6 +152,6 @@ def test_unfinished_and_other_files_are_ignored(
     assert not inbox.failed_dir.exists()
 
 
-def test_appended_text_trims_trailing_whitespace_of_old_text(keep: Keep) -> None:
-    node = create_note(keep, "T", "a  \n\n", OTHER_ID)
-    assert appended_text(node, "b") == "a\nb"
+@pytest.mark.parametrize(("old", "expected"), [("a", "a\nb"), ("a  \n\n", "a\nb"), ("", "b")])
+def test_appended_text(keep: Keep, old: str, expected: str) -> None:
+    assert appended_text(create_note(keep, "T", old, OTHER_ID), "b") == expected

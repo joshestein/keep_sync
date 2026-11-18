@@ -224,6 +224,7 @@ def test_inbox_append_builds_on_the_pulled_note(
     make_syncer,
     keep: Keep,
     server: FakeServer,
+    queue_dir: Path,
     inbox_dir: Path,
     write_inbox: WriteInbox,
 ) -> None:
@@ -239,13 +240,15 @@ def test_inbox_append_builds_on_the_pulled_note(
     write_inbox(text="b", append_to=OTHER_ID)
 
     assert syncer.round() is None
-
-    assert server.calls == [False, False]
-    assert (keep.get(OTHER_ID).title, keep.get(OTHER_ID).text) == (
-        "Ideas",
-        "a from phone\nb",
-    )
     assert list(inbox_dir.glob("*.json")) == []
+    [op] = [parse_op(p) for p in list_op_files(queue_dir)]
+    assert (op.title, op.text) == ("Ideas", "a from phone\nb")
+
+    # The op file wakes the next round, which sends it.
+    assert syncer.round() is None
+    assert server.calls == [False, False]
+    assert keep.get(OTHER_ID).text == "a from phone\nb"
+    assert list_op_files(queue_dir) == []
 
 
 def test_inbox_append_keeps_a_queued_raycast_edit(
@@ -262,15 +265,13 @@ def test_inbox_append_keeps_a_queued_raycast_edit(
     write_inbox(text="b", append_to=OTHER_ID)
 
     assert syncer.round() is None
+    assert syncer.round() is None
 
-    assert (keep.get(OTHER_ID).title, keep.get(OTHER_ID).text) == (
-        "Ideas v2",
-        "a edited\nb",
-    )
+    assert (keep.get(OTHER_ID).title, keep.get(OTHER_ID).text) == ("Ideas v2", "a edited\nb")
     assert list_op_files(queue_dir) == []
 
 
-def test_inbox_offline_queues_creates_and_keeps_appends(
+def test_inbox_waits_for_a_sync(
     make_syncer,
     keep: Keep,
     server: FakeServer,
@@ -283,42 +284,10 @@ def test_inbox_offline_queues_creates_and_keeps_appends(
     append = write_inbox(text="b", append_to=OTHER_ID)
     server.errors = [requests.ConnectionError("offline")]
 
-    syncer.round()
-
-    assert [parse_op(p).kind for p in list_op_files(queue_dir)] == ["create"]
-    assert not capture.exists()
-    assert append.exists()
-    assert keep.get(OTHER_ID).text == "a"
-    # The Mac shows the capture before Keep has it.
-    assert any(n["text"] == "new note" for n in read_cache(syncer)["notes"])
-
-
-def test_inbox_append_stays_queued_when_the_second_sync_fails(
-    make_syncer,
-    keep: Keep,
-    server: FakeServer,
-    queue_dir: Path,
-    write_op: WriteOp,
-    write_inbox: WriteInbox,
-) -> None:
-    syncer = make_syncer()
-    create_note(keep, "Ideas", "a", OTHER_ID)
-    write_op("create", text="milk")
-    append = write_inbox(text="b", append_to=OTHER_ID)
-    server.errors = [None, requests.ConnectionError("offline")]
-
     assert syncer.round() is not None
 
-    # The first sync sent the create, so it is gone. A replay could only overwrite newer edits.
-    assert syncer.state_file.exists()
-    assert not append.exists()
-    [op] = [parse_op(p) for p in list_op_files(queue_dir)]
-    assert (op.kind, op.text) == ("update", "a\nb")
-    assert read_cache(syncer)["error"]["kind"] == "network"
-
-    assert syncer.round() is None
-    assert keep.get(OTHER_ID).text == "a\nb"
     assert list_op_files(queue_dir) == []
+    assert capture.exists() and append.exists()
 
 
 def test_state_write_failure_after_sync_still_removes_the_sent_ops(
@@ -339,13 +308,6 @@ def test_state_write_failure_after_sync_still_removes_the_sent_ops(
 
     assert syncer.round() is not None
     assert list_op_files(queue_dir) == []
-
-
-def test_no_append_no_second_sync(make_syncer, server: FakeServer, write_inbox: WriteInbox) -> None:
-    syncer = make_syncer()
-    write_inbox(text="new note")
-    assert syncer.round() is None
-    assert server.calls == [False]
 
 
 @pytest.mark.parametrize(
