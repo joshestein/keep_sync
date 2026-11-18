@@ -59,3 +59,22 @@ def test_set_items_with_same_items_changes_nothing() -> None:
 
     assert lst.items == items
     assert lst.timestamps.updated == updated
+
+
+def test_set_items_with_new_items_at_the_end_adds_only_those() -> None:
+    """An append, or a replay of one on a model from before it: the other items must not be made again."""
+    lst = Keep().createList("L", [])
+    set_items(lst, parse("- [ ] a\n  - [x] b\n- [ ] c"))
+    old = lst.items
+
+    set_items(lst, parse(format_items(old) + "\n  - [ ] c1\n- [ ] d"))
+
+    assert shape(lst) == [
+        ("a", False, None),
+        ("b", True, "a"),
+        ("c", False, None),
+        ("c1", False, "c"),
+        ("d", False, None),
+    ]
+    assert lst.items[:3] == old
+    assert not any(i.deleted for i in old)
