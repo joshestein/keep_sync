@@ -71,11 +71,12 @@ def mint_note_id(now_ms: int) -> str:
 
 
 def write_op(queue_dir: Path, op: Op, now_ms: int) -> Path:
-    """Write one op file, atomically. Same as writeOp in raycast/src/lib/store.ts (ADR 0002).
+    """Write one op file, atomically. Same file format as writeOp in raycast/src/lib/store.ts (ADR 0002).
 
-    The time in the name is after every queued and failed op, so a clock step back cannot put it before them.
+    Unlike writeOp, the time in the name is after every queued op: the op can build on them, so a replay
+    must apply it last, also after a clock step back.
     """
-    times = [int(p.name.split("-")[0]) for d in (queue_dir, queue_dir / "failed") for p in list_op_files(d)]
+    times = [int(p.name.split("-")[0]) for p in list_op_files(queue_dir)]
     path = queue_dir / f"{max([now_ms, *(t + 1 for t in times)])}-{secrets.token_hex(4)}.json"
     write_json_atomic(path, {"op": op.kind, "note_id": op.note_id, "title": op.title, "text": op.text})
     return path
