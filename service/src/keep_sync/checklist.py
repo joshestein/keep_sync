@@ -7,7 +7,7 @@ both sides test the same cases.
 import re
 from dataclasses import dataclass
 
-from gkeepapi.node import List, ListItem
+from gkeepapi.node import List, ListItem, NewListItemPlacementValue
 
 # Lenient: "- [ ] a", "-[] a", "- [X] a". Leading whitespace indents the item.
 TODO_RE = re.compile(r"^([ \t]*)-[ \t]*\[([ xX]?)\][ \t]?(.*)$")
@@ -49,14 +49,25 @@ def is_checklist(text: str) -> bool:
 
 
 def format_items(items: list[ListItem]) -> str:
-    return "\n".join(
-        f"{INDENT if i.indented else ''}- [{'x' if i.checked else ' '}] {i.text}" for i in items
-    )
+    return "\n".join(f"{INDENT if i.indented else ''}- [{'x' if i.checked else ' '}] {i.text}" for i in items)
 
 
 def set_items(lst: List, wanted: list[Item]) -> None:
     """Replace the items of lst with wanted. If they are already the same, change nothing, so a replay is a no-op."""
-    if [Item(i.text, i.checked, i.indented) for i in lst.items] == wanted:
+    items = lst.items
+    current = [Item(i.text, i.checked, i.indented) for i in items]
+    if current == wanted:
+        return
+    if current and wanted[: len(current)] == current:
+        # Only new items at the end, for example an append: add only those, so the push leaves
+        # the other items alone, and changes to them from another device stay.
+        parent = next((i for i in reversed(items) if not i.indented), None)
+        for w in wanted[len(current) :]:
+            node = lst.add(w.text, w.checked, NewListItemPlacementValue.Bottom)
+            if w.indented and parent is not None:
+                parent.indent(node)
+            else:
+                parent = node
         return
     for old in lst.items:
         old.delete()
