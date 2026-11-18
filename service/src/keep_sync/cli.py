@@ -88,20 +88,25 @@ def run(_: argparse.Namespace) -> None:
 
 
 def status(_: argparse.Namespace) -> None:
-    print(f"agent:    {'loaded' if launchd.is_loaded() else 'not loaded'}")
+    print(f"agent:        {'loaded' if launchd.is_loaded() else 'not loaded'}")
     try:
         cache = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        print("cache:    none")
+        print("cache:        none")
     else:
         error = cache["error"]
-        print(f"synced:   {cache['synced_at'] or 'never'}")
-        print(f"attempt:  {cache['last_attempt_at']}")
-        print(f"error:    {f'{error['kind']}: {error['message']}' if error else 'none'}")
-        print(f"notes:    {len(cache['notes'])}")
-    print(f"queued:   {len(list_op_files(QUEUE_DIR)) if QUEUE_DIR.exists() else 0}")
+        print(f"synced:       {cache['synced_at'] or 'never'}")
+        print(f"attempt:      {cache['last_attempt_at']}")
+        print(
+            f"error:        {f'{error["kind"]}: {error["message"]}' if error else 'none'}"
+        )
+        print(f"notes:        {len(cache['notes'])}")
+    print(f"queued:       {len(list_op_files(QUEUE_DIR)) if QUEUE_DIR.exists() else 0}")
     failed = QUEUE_DIR / "failed"
-    print(f"failed:   {len(list_op_files(failed)) if failed.exists() else 0}")
+    print(f"failed:       {len(list_op_files(failed)) if failed.exists() else 0}")
+    inbox = Inbox(INBOX_DIR)
+    print(f"inbox:        {len(inbox.files())}")
+    print(f"inbox failed: {len(inbox.failed())}")
 
 
 def uninstall(args: argparse.Namespace) -> None:
