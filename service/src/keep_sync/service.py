@@ -88,14 +88,13 @@ class Syncer:
             applied = apply_queue(self.keep, self.queue_dir)
             self.keep.sync()
             self.synced_at = attempt_at
-            # Before the ops go: until the cache has a change, the Mac shows it from its op.
+            # Cache first: until it has the changes, the Mac shows them from the ops.
             self._write_cache(attempt_at, None)
-            # Keep has the ops, so a replay could only overwrite newer edits from other devices.
+            # Keep has the ops. A replay could only overwrite newer edits.
             remove_ops(applied)
-            # Last: if it fails, the ops are already gone. A restart loads the older state and pulls the changes.
+            # After remove_ops: if it fails, a restart pulls the changes and replays nothing.
             save_state(self.keep, self.state_file)
-            # After the sync, so an append builds on the newest note (ADR 0004).
-            # The new op files wake the next round, which sends them.
+            # After the sync, so appends build on the newest notes. The op files wake the next round (ADR 0004).
             self.inbox.ingest(self.keep, self.queue_dir)
         except Exception as e:
             error = classify(e)
