@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast, get_args
@@ -83,9 +84,13 @@ def write_op(queue_dir: Path, op: Op, now_ms: int) -> Path:
 
 
 def move_to_failed(path: Path) -> None:
-    dest = path.parent / "failed"
-    dest.mkdir(exist_ok=True)
-    os.replace(path, dest / path.name)
+    failed_dir = path.parent / "failed"
+    failed_dir.mkdir(exist_ok=True)
+    dest = failed_dir / path.name
+    if dest.exists():
+        # Inbox callers pick names, so two bad files can share one. Keep both.
+        dest = dest.with_stem(f"{dest.stem}-{time.time_ns()}")
+    os.replace(path, dest)
 
 
 def remove_ops(paths: list[Path]) -> None:
