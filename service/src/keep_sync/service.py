@@ -1,4 +1,4 @@
-"""The sync loop: apply ops, sync, write state and cache, remove op files."""
+"""The sync loop: take inbox files, apply ops, sync, write state and cache, remove op files."""
 
 import faulthandler
 import logging
@@ -17,7 +17,14 @@ from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 
 from keep_sync.apply import apply_queue
-from keep_sync.cache import Status, SyncError, read_cached_notes, serialize_notes, write_cache
+from keep_sync.cache import (
+    Status,
+    SyncError,
+    read_cached_notes,
+    serialize_notes,
+    write_cache,
+)
+from keep_sync.inbox import Inbox
 from keep_sync.keychain import KeychainError
 from keep_sync.queue import SYNC_NOW_FILE, remove_ops
 from keep_sync.state import save_state
@@ -59,6 +66,7 @@ class Syncer:
     keep: Keep
     login: Callable[[Keep], None]
     queue_dir: Path
+    inbox: Inbox
     cache_file: Path
     state_file: Path
     # True when the model is empty (no usable state) or Keep asked for a resync.
@@ -69,7 +77,12 @@ class Syncer:
 
     def round(self) -> SyncError | None:
         attempt_at = datetime.now(UTC)
-        applied: list[Path] = []
+        now_ms = int(attempt_at.timestamp() * 1000)
+        # Before the network: offline or signed out, a capture still reaches the queue, and the Mac shows it.
+        try:
+            self.inbox.ingest_creates(self.queue_dir, now_ms)
+        except Exception:
+            log.exception("inbox step failed")
         error = None
         try:
             if not self.logged_in:
@@ -78,8 +91,11 @@ class Syncer:
             if self.needs_full_sync:
                 self.keep.sync(resync=True)
                 self.needs_full_sync = False
-            applied = apply_queue(self.keep, self.queue_dir)
-            self.keep.sync()
+            self._sync(apply_queue(self.keep, self.queue_dir), attempt_at)
+            # After the sync: an append replaces the full text, so it must build on the newest note,
+            # with the queued edits on it (ADR 0004).
+            if appended := self.inbox.ingest_appends(self.keep, self.queue_dir, now_ms):
+                self._sync(appended, attempt_at)
         except Exception as e:
             error = classify(e)
             log.warning("sync failed: %s", error.message, exc_info=error.kind == "other")
@@ -88,17 +104,25 @@ class Syncer:
                 self.logged_in = False
             if isinstance(e, ResyncRequiredException):
                 self.needs_full_sync = True
-        else:
-            self.synced_at = attempt_at
-            save_state(self.keep, self.state_file)
+            self._write_cache(attempt_at, error)
+        return error
 
+    def _sync(self, applied: list[Path], attempt_at: datetime) -> None:
+        """Send the applied ops and get changes. Then remove the ops: Keep has them, so a replay could only
+        overwrite newer edits from other devices."""
+        self.keep.sync()
+        self.synced_at = attempt_at
+        # Before the ops go: until the cache has a change, the Mac shows it from its op.
+        self._write_cache(attempt_at, None)
+        remove_ops(applied)
+        # Last: if it fails, the ops are already gone. A restart loads the older state and pulls the changes.
+        save_state(self.keep, self.state_file)
+
+    def _write_cache(self, attempt_at: datetime, error: SyncError | None) -> None:
         # Until a full sync fills the model, it is empty or partial (resync clears it first).
         # Keep the notes from the last cache, so a failed sync never empties the list.
         notes = read_cached_notes(self.cache_file) if self.needs_full_sync else serialize_notes(self.keep)
         write_cache(self.cache_file, notes, Status(self.synced_at, attempt_at, error))
-        if error is None:
-            remove_ops(applied)
-        return error
 
 
 @dataclass(frozen=True)
