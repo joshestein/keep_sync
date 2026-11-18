@@ -16,18 +16,22 @@ An `append` op kind would apply "add this line" at sync time. Rejected:
 
 So the service builds the full new text (old text, a newline, the new text) and writes a normal `update` op.
 
-## Creates before the network, appends after a sync
+## Inbox files become ops after a sync
 
-An `update` op replaces the full text, so the service must build it from the newest copy of the note. At the start of a round, the model can be minutes or hours old. A round does this:
+An `update` op replaces the full text, so it must build on the newest note. Each round:
 
-1. Turn create files into `create` ops, with no network. Offline, a capture still reaches the queue, and the Mac shows it.
-2. Apply the queue and sync. The model now holds the newest note, with the queued Raycast edits on it.
-3. Turn append files into `update` ops, one at a time. Apply each op before the next file is read, so two appends to one note both stay. Then sync again.
+1. Apply the queue and sync.
+2. Turn each inbox file into an op in `queue/`, in name order. Apply each op to the model, so two appends to one note both stay.
+3. The op files wake the queue watcher. The next round sends them.
 
-An append waits in `inbox/` until a sync succeeds.
+Creates take the same path. Offline, a capture waits in `inbox/`.
 
 ## Consequences
 
-- A crash between the op write and the inbox delete makes a duplicate note or a duplicate line. Accepted.
-- If the second sync fails, the append op stays in `queue/` with text built at that time. Edits made on another device before the next successful sync are overwritten. This is the same risk as a Raycast edit made from the cache. Accepted.
-- An append to a missing, trashed, or deleted note goes to `inbox/failed/`. It does not follow the fallback chain that `update` ops follow. An archived note is a valid target.
+One user, low edit rate. Accepted, not guarded:
+
+- A crash between the op write and the inbox delete makes a duplicate.
+- An append overwrites edits made between its sync and the next round: a Raycast edit queued during the sync, or an edit on another device.
+- Files are processed in name order, not arrival order.
+- A bad file goes to `inbox/failed/` at once and overwrites a failed file with the same name. Callers must write `.part`, then rename.
+- An append to a missing, trashed, or deleted note goes to `inbox/failed/`. It does not follow the `update` fallback chain. An archived note is valid.
